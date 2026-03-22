@@ -402,17 +402,29 @@ gctl_context_resolver_resolve(
 
 	/* Step 1: Get the remote URL */
 	url = run_git_remote_get_url(remote_name, error);
-	if (url == NULL)
-		return NULL;
 
-	/* Step 2: Parse host, owner, repo from the URL */
-	if (!parse_remote_url(url, &host, &owner, &repo, error))
-		return NULL;
+	if (url != NULL) {
+		/* Step 2: Parse host, owner, repo from the URL */
+		if (!parse_remote_url(url, &host, &owner, &repo, error))
+			return NULL;
+	}
 
 	/* Step 3: Determine forge type */
 	if (self->forced_forge != GCTL_FORGE_TYPE_UNKNOWN) {
 		forge_type = self->forced_forge;
+
+		/*
+		 * When the forge is forced and the remote URL couldn't be
+		 * resolved, clear the error — we can still proceed for
+		 * operations that don't need owner/repo context (e.g.
+		 * repo list, repo create).
+		 */
+		if (url == NULL)
+			g_clear_error(error);
 	} else {
+		if (url == NULL)
+			return NULL;
+
 		forge_type = gctl_config_get_forge_for_host(self->config, host);
 		if (forge_type == GCTL_FORGE_TYPE_UNKNOWN) {
 			g_set_error(error, GCTL_ERROR, GCTL_ERROR_FORGE_DETECT,
