@@ -246,6 +246,77 @@ parse_ssh_url(
 }
 
 /*
+ * parse_ssh_scheme_url:
+ * @url: an SSH-scheme git remote URL
+ * @out_host: (out) (transfer full): the hostname
+ * @out_owner: (out) (transfer full): the repository owner
+ * @out_repo: (out) (transfer full): the repository name
+ * @error: return location for a #GError
+ *
+ * Parses URLs of the form:
+ *   ssh://git@github.com/owner/repo.git
+ *   ssh://git@host:2222/owner/repo.git
+ *   ssh://host/owner/repo.git
+ *
+ * Returns: %TRUE on success
+ */
+static gboolean
+parse_ssh_scheme_url(
+	const gchar  *url,
+	gchar       **out_host,
+	gchar       **out_owner,
+	gchar       **out_repo,
+	GError      **error
+){
+	g_autoptr(GUri) uri = NULL;
+	const gchar *host;
+	const gchar *path;
+	g_auto(GStrv) segments = NULL;
+	guint count;
+	gchar *repo_name;
+
+	uri = g_uri_parse(url, G_URI_FLAGS_NONE, error);
+	if (uri == NULL)
+		return FALSE;
+
+	host = g_uri_get_host(uri);
+	path = g_uri_get_path(uri);
+
+	if (host == NULL || path == NULL || *path == '\0') {
+		g_set_error(error, GCTL_ERROR, GCTL_ERROR_FORGE_DETECT,
+		            "Could not extract host/path from SSH URL: %s", url);
+		return FALSE;
+	}
+
+	/*
+	 * path looks like "/owner/repo" or "/owner/repo.git".
+	 * Skip the leading '/' then split on '/'.
+	 */
+	if (*path == '/')
+		path++;
+
+	segments = g_strsplit(path, "/", 0);
+	count = g_strv_length(segments);
+
+	if (count < 2) {
+		g_set_error(error, GCTL_ERROR, GCTL_ERROR_FORGE_DETECT,
+		            "SSH URL path has fewer than 2 segments: %s", url);
+		return FALSE;
+	}
+
+	/* Strip .git suffix from repo name */
+	repo_name = g_strdup(segments[1]);
+	if (g_str_has_suffix(repo_name, ".git"))
+		repo_name[strlen(repo_name) - 4] = '\0';
+
+	*out_host  = g_strdup(host);
+	*out_owner = g_strdup(segments[0]);
+	*out_repo  = repo_name;
+
+	return TRUE;
+}
+
+/*
  * parse_remote_url:
  * @url: the raw remote URL string
  * @out_host: (out) (transfer full): the hostname
@@ -269,6 +340,12 @@ parse_remote_url(
 	    g_str_has_prefix(url, "http://"))
 	{
 		return parse_https_url(url, out_host, out_owner, out_repo, error);
+	}
+
+	/* ssh:// scheme URLs (may include port) */
+	if (g_str_has_prefix(url, "ssh://"))
+	{
+		return parse_ssh_scheme_url(url, out_host, out_owner, out_repo, error);
 	}
 
 	if (g_str_has_prefix(url, "git@") || strchr(url, ':') != NULL) {

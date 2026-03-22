@@ -14,6 +14,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +24,7 @@
 #include "gitctl-error.h"
 #include "gitctl-version.h"
 #include "core/gitctl-app.h"
+#include "core/gitctl-config.h"
 #include "core/gitctl-context-resolver.h"
 #include "commands/gitctl-cmd-pr.h"
 #include "commands/gitctl-cmd-issue.h"
@@ -30,6 +32,7 @@
 #include "commands/gitctl-cmd-release.h"
 #include "commands/gitctl-cmd-api.h"
 #include "commands/gitctl-cmd-config.h"
+#include "commands/gitctl-cmd-completion.h"
 
 /* ===== License text ===== */
 
@@ -49,6 +52,17 @@ static const gchar *license_text =
 	"\n"
 	"You should have received a copy of the GNU Affero General Public License\n"
 	"along with this program.  If not, see <https://www.gnu.org/licenses/>.\n";
+
+/* ===== Signal handling ===== */
+
+static volatile sig_atomic_t g_interrupted = 0;
+
+static void
+signal_handler(int signum)
+{
+	(void)signum;
+	g_interrupted = 1;
+}
 
 /* ===== Global options ===== */
 
@@ -112,6 +126,7 @@ static const GctlCommand commands[] = {
 	{ "release", "Manage releases",            gctl_cmd_release },
 	{ "api",     "Make raw API requests",      gctl_cmd_api     },
 	{ "config",  "Manage configuration",       gctl_cmd_config  },
+	{ "completion", "Generate shell completions", gctl_cmd_completion },
 	{ NULL, NULL, NULL }
 };
 
@@ -145,6 +160,12 @@ print_usage(void)
 	g_print("  -r, --remote NAME       Git remote (default: origin)\n");
 	g_print("  -c, --config PATH       Config file path\n");
 	g_print("\n");
+	g_print("Environment variables (overridden by CLI flags):\n");
+	g_print("  GITCTL_CONFIG               Configuration file path\n");
+	g_print("  GITCTL_FORGE                Force forge type\n");
+	g_print("  GITCTL_REMOTE               Git remote name\n");
+	g_print("  GITCTL_OUTPUT               Output format\n");
+	g_print("\n");
 	g_print("Examples:\n");
 	g_print("  gitctl pr list                           List open pull requests\n");
 	g_print("  gitctl pr get 123                        View PR #123\n");
@@ -155,6 +176,7 @@ print_usage(void)
 	g_print("  gitctl -o json pr list                    List PRs as JSON\n");
 	g_print("  gitctl -f gitlab pr list                  Force GitLab forge\n");
 	g_print("  gitctl api GET /repos/{owner}/{repo}      Raw API request\n");
+	g_print("  GITCTL_FORGE=gitlab gitctl pr list        Use env var for forge\n");
 	g_print("\n");
 	g_print("Run 'gitctl <command> --help' for command-specific help.\n");
 }
@@ -210,6 +232,16 @@ main(
 		return 1;
 	}
 
+	/* Environment variable defaults (CLI flags override) */
+	if (opt_config == NULL)
+		opt_config = g_strdup(g_getenv("GITCTL_CONFIG"));
+	if (opt_forge == NULL)
+		opt_forge = g_strdup(g_getenv("GITCTL_FORGE"));
+	if (opt_remote == NULL)
+		opt_remote = g_strdup(g_getenv("GITCTL_REMOTE"));
+	if (opt_output == NULL)
+		opt_output = g_strdup(g_getenv("GITCTL_OUTPUT"));
+
 	/* Handle --version */
 	if (opt_version) {
 		g_print("gitctl %s\n", GCTL_VERSION);
@@ -238,22 +270,7 @@ main(
 		return 0;
 	}
 
-	/* Look up the command */
-	cmd = NULL;
-	for (i = 0; commands[i].name != NULL; i++) {
-		if (g_strcmp0(commands[i].name, command_name) == 0) {
-			cmd = &commands[i];
-			break;
-		}
-	}
-
-	if (cmd == NULL) {
-		g_printerr("Error: unknown command '%s'\n", command_name);
-		g_printerr("Run 'gitctl --help' for a list of commands.\n");
-		return 1;
-	}
-
-	/* Create and initialize the app */
+	/* Create and initialize the app (before command lookup, for alias support) */
 	app = gctl_app_new();
 
 	/* Apply global options */
@@ -281,6 +298,22 @@ main(
 		return 1;
 	}
 
+	/* Apply --config override (or GITCTL_CONFIG env var) */
+	if (opt_config) {
+		GctlConfig *config = gctl_app_get_config(app);
+		g_autoptr(GError) cfg_err = NULL;
+		if (!gctl_config_load(config, opt_config, &cfg_err)) {
+			g_printerr("warning: failed to load config '%s': %s\n",
+			           opt_config, cfg_err->message);
+		}
+	}
+
+	/* Apply --remote override (or GITCTL_REMOTE env var) */
+	if (opt_remote) {
+		GctlConfig *config = gctl_app_get_config(app);
+		gctl_config_set_default_remote(config, opt_remote);
+	}
+
 	/* If --forge was specified, force the forge type on the resolver */
 	if (opt_forge) {
 		GctlForgeType forge_type;
@@ -297,10 +330,123 @@ main(
 		gctl_context_resolver_set_forced_forge(resolver, forge_type);
 	}
 
-	/* Shift argv to pass the subcommand args (skip argv[0] and command name) */
+	/* Install signal handlers for graceful interruption */
+	{
+		struct sigaction sa;
+		memset(&sa, 0, sizeof(sa));
+		sa.sa_handler = signal_handler;
+		sigemptyset(&sa.sa_mask);
+		sa.sa_flags = 0;
+		sigaction(SIGINT, &sa, NULL);
+		sigaction(SIGTERM, &sa, NULL);
+	}
+
+	/* Compute sub_argv before alias expansion (may be rebuilt below) */
 	sub_argc = argc - 2;
 	sub_argv = argv + 2;
 
-	/* Dispatch to the command handler */
-	return cmd->handler(app, sub_argc, sub_argv);
+	/*
+	 * Alias expansion — check if the command name is a user-defined alias.
+	 * The app must be initialized before this point so the config (which
+	 * contains alias definitions) is loaded.  The command lookup must
+	 * happen AFTER this so the expanded command name is used.
+	 *
+	 * Example: alias "prl" = "pr list"
+	 * User runs:  gitctl prl --state closed
+	 * Expands to: gitctl pr list --state closed
+	 */
+	{
+		GctlConfig *alias_config;
+		const gchar *alias_value;
+		gchar *expanded_command_name = NULL;
+		gchar **expanded_sub_argv = NULL;
+
+		alias_config = gctl_app_get_config(app);
+		alias_value = NULL;
+
+		if (alias_config != NULL)
+			alias_value = gctl_config_get_alias(alias_config, command_name);
+
+		if (alias_value != NULL)
+		{
+			gchar **alias_parts;
+			gint n_parts;
+
+			alias_parts = g_strsplit(alias_value, " ", -1);
+			n_parts = (gint)g_strv_length(alias_parts);
+
+			if (n_parts >= 1)
+			{
+				/*
+				 * Replace command_name with the first word of the alias.
+				 * The remaining alias words become the new verb + args,
+				 * followed by any extra args the user passed after the alias.
+				 *
+				 * command_name becomes alias_parts[0] (e.g. "pr")
+				 * sub_argv becomes ["list", "--state", "closed"]
+				 */
+				gint alias_extra;
+				gint orig_sub_argc;
+				gint new_sub_argc;
+				gint j;
+
+				expanded_command_name = g_strdup(alias_parts[0]);
+				command_name = expanded_command_name;
+
+				alias_extra = n_parts - 1;
+				orig_sub_argc = sub_argc;
+				new_sub_argc = alias_extra + orig_sub_argc;
+
+				expanded_sub_argv = g_new0(gchar *, (gsize)(new_sub_argc + 1));
+
+				/* Copy alias extra words (strdup for ownership) */
+				for (j = 0; j < alias_extra; j++)
+					expanded_sub_argv[j] = g_strdup(alias_parts[1 + j]);
+
+				/* Copy original sub_argv entries (strdup for ownership) */
+				for (j = 0; j < orig_sub_argc; j++)
+					expanded_sub_argv[alias_extra + j] = g_strdup(sub_argv[j]);
+
+				sub_argc = new_sub_argc;
+				sub_argv = expanded_sub_argv;
+
+				if (gctl_app_get_verbose(app))
+					g_printerr("alias: %s -> %s\n",
+					           argv[1], alias_value);
+			}
+
+			g_strfreev(alias_parts);
+		}
+
+		/* Look up the command (after alias expansion) */
+		cmd = NULL;
+		for (i = 0; commands[i].name != NULL; i++) {
+			if (g_strcmp0(commands[i].name, command_name) == 0) {
+				cmd = &commands[i];
+				break;
+			}
+		}
+
+		if (cmd == NULL) {
+			g_printerr("Error: unknown command '%s'\n", command_name);
+			g_printerr("Run 'gitctl --help' for a list of commands.\n");
+			g_free(expanded_command_name);
+			g_strfreev(expanded_sub_argv);
+			return 1;
+		}
+
+		/* Dispatch to the command handler */
+		{
+			gint ret;
+
+			ret = cmd->handler(app, sub_argc, sub_argv);
+
+			g_free(expanded_command_name);
+			g_strfreev(expanded_sub_argv);
+
+			if (g_interrupted)
+				return 128 + SIGINT;
+			return ret;
+		}
+	}
 }

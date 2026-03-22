@@ -49,6 +49,7 @@
 #include "commands/gitctl-cmd-release.h"
 #include "commands/gitctl-cmd-api.h"
 #include "commands/gitctl-cmd-config.h"
+#include "commands/gitctl-cmd-completion.h"
 
 /* Module system */
 #include "module/gitctl-module.h"

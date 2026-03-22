@@ -9,6 +9,7 @@
 #include "gitctl.h"
 
 #include <gio/gio.h>
+#include <signal.h>
 
 /* ── Private structure ─────────────────────────────────────────────── */
 
@@ -279,6 +280,21 @@ gctl_executor_run(
 
 	elapsed = g_timer_elapsed(timer, NULL);
 	g_timer_destroy(timer);
+
+	/* Check for user interruption.
+	 * g_interrupted is defined in main.c and exported via --export-dynamic.
+	 * We use a weak reference so the library links cleanly on its own;
+	 * the symbol is resolved at load time when linked into the gitctl
+	 * executable. */
+	{
+		extern volatile sig_atomic_t g_interrupted __attribute__((weak));
+		if (&g_interrupted != NULL && g_interrupted) {
+			g_set_error_literal(error, GCTL_ERROR, GCTL_ERROR_GENERAL,
+			                    "Interrupted");
+			/* result may be partially valid -- return NULL to signal error */
+			return NULL;
+		}
+	}
 
 	exit_code = g_subprocess_get_exit_status(proc);
 

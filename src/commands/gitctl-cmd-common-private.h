@@ -112,6 +112,133 @@ gctl_cmd_print_verb_table(
 	           noun);
 }
 
+/*
+ * gctl_str_replace:
+ * @haystack: the input string
+ * @needle: the substring to find
+ * @replacement: the replacement string
+ *
+ * Replaces all occurrences of @needle in @haystack with @replacement.
+ *
+ * Returns: (transfer full): a newly allocated string
+ */
+static inline gchar *
+gctl_str_replace(
+	const gchar *haystack,
+	const gchar *needle,
+	const gchar *replacement
+){
+	g_auto(GStrv) parts = NULL;
+	parts = g_strsplit(haystack, needle, -1);
+	return g_strjoinv(replacement, parts);
+}
+
+typedef struct
+{
+	GctlResourceKind  kind;
+	GctlVerb          verb;
+	const gchar      *method;
+	const gchar      *endpoint;
+} GctlApiFallbackEntry;
+
+static const GctlApiFallbackEntry api_fallbacks[] = {
+	/* PR operations */
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_LIST,
+	  "GET", "/repos/{owner}/{repo}/pulls" },
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_GET,
+	  "GET", "/repos/{owner}/{repo}/pulls/{number}" },
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_CREATE,
+	  "POST", "/repos/{owner}/{repo}/pulls" },
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_CLOSE,
+	  "PATCH", "/repos/{owner}/{repo}/pulls/{number}" },
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_REOPEN,
+	  "PATCH", "/repos/{owner}/{repo}/pulls/{number}" },
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_MERGE,
+	  "POST", "/repos/{owner}/{repo}/pulls/{number}/merge" },
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_COMMENT,
+	  "POST", "/repos/{owner}/{repo}/issues/{number}/comments" },
+	{ GCTL_RESOURCE_KIND_PR, GCTL_VERB_REVIEW,
+	  "POST", "/repos/{owner}/{repo}/pulls/{number}/reviews" },
+
+	/* Issue operations */
+	{ GCTL_RESOURCE_KIND_ISSUE, GCTL_VERB_LIST,
+	  "GET", "/repos/{owner}/{repo}/issues" },
+	{ GCTL_RESOURCE_KIND_ISSUE, GCTL_VERB_GET,
+	  "GET", "/repos/{owner}/{repo}/issues/{number}" },
+	{ GCTL_RESOURCE_KIND_ISSUE, GCTL_VERB_CREATE,
+	  "POST", "/repos/{owner}/{repo}/issues" },
+	{ GCTL_RESOURCE_KIND_ISSUE, GCTL_VERB_CLOSE,
+	  "PATCH", "/repos/{owner}/{repo}/issues/{number}" },
+	{ GCTL_RESOURCE_KIND_ISSUE, GCTL_VERB_REOPEN,
+	  "PATCH", "/repos/{owner}/{repo}/issues/{number}" },
+	{ GCTL_RESOURCE_KIND_ISSUE, GCTL_VERB_COMMENT,
+	  "POST", "/repos/{owner}/{repo}/issues/{number}/comments" },
+
+	/* Repo operations */
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_LIST,
+	  "GET", "/user/repos" },
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_GET,
+	  "GET", "/repos/{owner}/{repo}" },
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_CREATE,
+	  "POST", "/user/repos" },
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_DELETE,
+	  "DELETE", "/repos/{owner}/{repo}" },
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_FORK,
+	  "POST", "/repos/{owner}/{repo}/forks" },
+
+	/* Release operations */
+	{ GCTL_RESOURCE_KIND_RELEASE, GCTL_VERB_LIST,
+	  "GET", "/repos/{owner}/{repo}/releases" },
+	{ GCTL_RESOURCE_KIND_RELEASE, GCTL_VERB_GET,
+	  "GET", "/repos/{owner}/{repo}/releases/{number}" },
+	{ GCTL_RESOURCE_KIND_RELEASE, GCTL_VERB_CREATE,
+	  "POST", "/repos/{owner}/{repo}/releases" },
+	{ GCTL_RESOURCE_KIND_RELEASE, GCTL_VERB_DELETE,
+	  "DELETE", "/repos/{owner}/{repo}/releases/{number}" },
+};
+
+static inline const GctlApiFallbackEntry *
+gctl_cmd_find_api_fallback(
+	GctlResourceKind kind,
+	GctlVerb         verb
+){
+	gsize i;
+	for (i = 0; i < G_N_ELEMENTS(api_fallbacks); i++) {
+		if (api_fallbacks[i].kind == kind &&
+		    api_fallbacks[i].verb == verb)
+			return &api_fallbacks[i];
+	}
+	return NULL;
+}
+
+static inline gchar *
+gctl_cmd_expand_endpoint(
+	const gchar      *tmpl,
+	GctlForgeContext *context,
+	GHashTable       *params
+){
+	g_autofree gchar *s1 = NULL;
+	g_autofree gchar *s2 = NULL;
+	gchar *result;
+	const gchar *number;
+
+	s1 = gctl_str_replace(tmpl, "{owner}",
+	                       gctl_forge_context_get_owner(context));
+	s2 = gctl_str_replace(s1, "{repo}",
+	                       gctl_forge_context_get_repo_name(context));
+
+	number = (params != NULL)
+		? (const gchar *)g_hash_table_lookup(params, "number")
+		: NULL;
+
+	if (number != NULL)
+		result = gctl_str_replace(s2, "{number}", number);
+	else
+		result = g_strdup(s2);
+
+	return result;
+}
+
 /**
  * gctl_cmd_execute_verb:
  * @app: the #GctlApp instance
@@ -151,6 +278,7 @@ gctl_cmd_execute_verb(
 	GctlForge *forge;
 	gchar **argv;
 	const gchar *default_remote;
+	gboolean used_api_fallback = FALSE;
 
 	/* Step 1: Retrieve subsystems from the app */
 	executor = gctl_app_get_executor(app);
@@ -189,6 +317,32 @@ gctl_cmd_execute_verb(
 		return 1;
 	}
 
+	/* Step 3.5: Verify the forge CLI tool is available */
+	if (!gctl_forge_is_available(forge))
+	{
+		const gchar *cli_name;
+		const gchar *forge_name;
+		GctlForgeType ft;
+
+		cli_name = gctl_forge_get_cli_tool(forge);
+		forge_name = gctl_forge_get_name(forge);
+		ft = gctl_forge_context_get_forge_type(context);
+
+		g_printerr("error: %s requires '%s' but it was not found in PATH.\n",
+		           forge_name, cli_name);
+
+		if (ft == GCTL_FORGE_TYPE_GITHUB)
+			g_printerr("  Install: https://cli.github.com/\n");
+		else if (ft == GCTL_FORGE_TYPE_GITLAB)
+			g_printerr("  Install: https://gitlab.com/gitlab-org/cli\n");
+		else if (ft == GCTL_FORGE_TYPE_FORGEJO)
+			g_printerr("  Install: https://forgejo.org/docs/latest/admin/command-line/\n");
+		else if (ft == GCTL_FORGE_TYPE_GITEA)
+			g_printerr("  Install: https://gitea.com/gitea/tea\n");
+
+		return 1;
+	}
+
 	/* Add the resource identifier to params if provided */
 	if (id != NULL && params != NULL)
 	{
@@ -199,6 +353,43 @@ gctl_cmd_execute_verb(
 
 	/* Step 4: Build the argv array for the forge CLI */
 	argv = gctl_forge_build_argv(forge, kind, verb, context, params, &error);
+
+	/* Step 4.5: If unsupported, try API fallback */
+	if (argv == NULL &&
+	    error != NULL &&
+	    error->domain == GCTL_ERROR &&
+	    error->code == GCTL_ERROR_FORGE_UNSUPPORTED)
+	{
+		const GctlApiFallbackEntry *fallback;
+
+		fallback = gctl_cmd_find_api_fallback(kind, verb);
+		if (fallback != NULL)
+		{
+			g_autofree gchar *endpoint = NULL;
+			const gchar *body_str = NULL;
+
+			g_clear_error(&error);
+
+			endpoint = gctl_cmd_expand_endpoint(
+			    fallback->endpoint, context, params);
+
+			/* Check for a JSON body in params */
+			if (params != NULL)
+				body_str = (const gchar *)g_hash_table_lookup(params, "body");
+
+			if (gctl_app_get_verbose(app) || gctl_executor_get_dry_run(executor))
+				g_printerr("note: %s %s unsupported by CLI, falling back to API: %s %s\n",
+				           gctl_resource_kind_to_string(kind),
+				           gctl_verb_to_string(verb),
+				           fallback->method, endpoint);
+
+			argv = gctl_forge_build_api_argv(
+			    forge, fallback->method, endpoint, body_str, &error);
+
+			if (argv != NULL)
+				used_api_fallback = TRUE;
+		}
+	}
 
 	if (argv == NULL)
 	{
@@ -239,6 +430,16 @@ gctl_cmd_execute_verb(
 	 */
 	if (gctl_executor_get_dry_run(executor))
 		return 0;
+
+	/* API fallback returns raw JSON — print as-is, skip parsing */
+	if (used_api_fallback)
+	{
+		const gchar *stdout_text;
+		stdout_text = gctl_command_result_get_stdout(result);
+		if (stdout_text != NULL && stdout_text[0] != '\0')
+			g_print("%s", stdout_text);
+		return 0;
+	}
 
 	/* Steps 6-8: Parse and format output based on verb type */
 	if (verb == GCTL_VERB_LIST)

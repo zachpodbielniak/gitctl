@@ -144,6 +144,21 @@ gctl_config_get_cli_path(
 );
 
 /**
+ * gctl_config_set_default_remote:
+ * @self: a #GctlConfig
+ * @remote: the new default remote name
+ *
+ * Overrides the default git remote name stored in the configuration.
+ * This is typically called when the user passes --remote on the
+ * command line or sets the GITCTL_REMOTE environment variable.
+ */
+void
+gctl_config_set_default_remote(
+	GctlConfig   *self,
+	const gchar  *remote
+);
+
+/**
  * gctl_config_get_alias:
  * @self: a #GctlConfig
  * @alias: the alias name to look up

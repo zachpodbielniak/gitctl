@@ -45,6 +45,7 @@ LIB_SRCS := \
 	src/commands/gitctl-cmd-release.c \
 	src/commands/gitctl-cmd-api.c \
 	src/commands/gitctl-cmd-config.c \
+	src/commands/gitctl-cmd-completion.c \
 	src/module/gitctl-module.c \
 	src/module/gitctl-module-manager.c
 

@@ -503,6 +503,26 @@ gctl_config_get_cli_path(
 		self->cli_paths, forge_type_key(forge_type));
 }
 
+/**
+ * gctl_config_set_default_remote:
+ * @self: a #GctlConfig
+ * @remote: the new default remote name
+ *
+ * Overrides the default git remote name.  The previous value is freed
+ * and replaced with a copy of @remote.
+ */
+void
+gctl_config_set_default_remote(
+	GctlConfig  *self,
+	const gchar *remote
+){
+	g_return_if_fail(GCTL_IS_CONFIG(self));
+	g_return_if_fail(remote != NULL);
+
+	g_free(self->default_remote);
+	self->default_remote = g_strdup(remote);
+}
+
 const gchar *
 gctl_config_get_alias(
 	GctlConfig   *self,
