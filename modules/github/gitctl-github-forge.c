@@ -884,6 +884,68 @@ build_release_argv(
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
 
+/* ── build_argv: Mirror operations ────────────────────────────────── */
+
+/**
+ * build_mirror_argv:
+ * @verb: the action to perform on the mirror
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Builds the gh CLI argument vector for mirror operations.
+ * GitHub has no native push mirror support.  Only fork-based
+ * sync is available via `gh repo sync`.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_mirror_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	g_autoptr(GPtrArray) argv = NULL;
+	const gchar *val = NULL;
+
+	switch (verb) {
+	case GCTL_VERB_SYNC:
+		/*
+		 * `gh repo sync` synchronises a fork with its upstream.
+		 * Optionally accepts --source <owner/repo> to specify
+		 * the upstream repository to sync from.
+		 */
+		argv = g_ptr_array_new_with_free_func(g_free);
+		g_ptr_array_add(argv, g_strdup("gh"));
+		g_ptr_array_add(argv, g_strdup("repo"));
+		g_ptr_array_add(argv, g_strdup("sync"));
+
+		val = get_param(params, "source");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--source"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		g_ptr_array_add(argv, NULL);
+		return (gchar **)g_ptr_array_free(
+			g_steal_pointer(&argv), FALSE
+		);
+
+	default:
+		g_set_error(
+			error,
+			GCTL_ERROR,
+			GCTL_ERROR_FORGE_UNSUPPORTED,
+			"GitHub does not support push mirrors natively. "
+			"Consider using GitHub Actions for mirror-push workflows. "
+			"For fork sync, use: gitctl mirror sync"
+		);
+		return NULL;
+	}
+}
+
 /* ── build_argv: dispatch ─────────────────────────────────────────── */
 
 /**
@@ -922,6 +984,9 @@ github_forge_build_argv(
 
 	case GCTL_RESOURCE_KIND_RELEASE:
 		return build_release_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_MIRROR:
+		return build_mirror_argv(verb, context, params, error);
 
 	default:
 		g_set_error(

@@ -837,6 +837,144 @@ build_release_argv(
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
 
+/* ── build_argv: Mirror operations ────────────────────────────────── */
+
+/**
+ * build_mirror_argv:
+ * @verb: the action to perform on the mirror
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Builds glab CLI argv for mirror operations.  CREATE uses the
+ * `glab repo mirror` subcommand.  LIST, GET, DELETE, and SYNC
+ * use `glab api` against the GitLab remote-mirrors REST API,
+ * where `:id` is auto-resolved by glab to the current project.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_mirror_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	g_autoptr(GPtrArray) argv = NULL;
+	const gchar *val = NULL;
+
+	argv = g_ptr_array_new_with_free_func(g_free);
+
+	switch (verb) {
+	case GCTL_VERB_CREATE:
+		/*
+		 * `glab repo mirror` creates a push mirror.
+		 * --direction defaults to "push".
+		 * --url is the remote mirror target URL.
+		 * --enabled=false can be passed to create in disabled state.
+		 */
+		g_ptr_array_add(argv, g_strdup("glab"));
+		g_ptr_array_add(argv, g_strdup("repo"));
+		g_ptr_array_add(argv, g_strdup("mirror"));
+
+		val = get_param(params, "direction");
+		g_ptr_array_add(argv, g_strdup("--direction"));
+		g_ptr_array_add(argv, g_strdup(
+			(val != NULL) ? val : "push"
+		));
+
+		val = get_param(params, "url");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--url"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "enabled");
+		if (val != NULL && g_strcmp0(val, "false") == 0)
+			g_ptr_array_add(argv, g_strdup("--enabled=false"));
+
+		break;
+
+	case GCTL_VERB_LIST:
+		/*
+		 * List all remote mirrors via the GitLab API.
+		 * glab auto-resolves :id to the current project.
+		 */
+		g_ptr_array_add(argv, g_strdup("glab"));
+		g_ptr_array_add(argv, g_strdup("api"));
+		g_ptr_array_add(argv, g_strdup(
+			"/projects/:id/remote_mirrors"
+		));
+		break;
+
+	case GCTL_VERB_GET:
+		/* Retrieve a single remote mirror by its ID */
+		g_ptr_array_add(argv, g_strdup("glab"));
+		g_ptr_array_add(argv, g_strdup("api"));
+
+		val = get_param(params, "mirror_id");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup_printf(
+				"/projects/:id/remote_mirrors/%s", val
+			));
+		} else {
+			set_unsupported(error,
+				GCTL_RESOURCE_KIND_MIRROR, verb);
+			return NULL;
+		}
+		break;
+
+	case GCTL_VERB_DELETE:
+		/* Delete a remote mirror by its ID */
+		g_ptr_array_add(argv, g_strdup("glab"));
+		g_ptr_array_add(argv, g_strdup("api"));
+
+		val = get_param(params, "mirror_id");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup_printf(
+				"/projects/:id/remote_mirrors/%s", val
+			));
+		} else {
+			set_unsupported(error,
+				GCTL_RESOURCE_KIND_MIRROR, verb);
+			return NULL;
+		}
+
+		g_ptr_array_add(argv, g_strdup("-X"));
+		g_ptr_array_add(argv, g_strdup("DELETE"));
+		break;
+
+	case GCTL_VERB_SYNC:
+		/* Trigger sync on a remote mirror by its ID */
+		g_ptr_array_add(argv, g_strdup("glab"));
+		g_ptr_array_add(argv, g_strdup("api"));
+
+		val = get_param(params, "mirror_id");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup_printf(
+				"/projects/:id/remote_mirrors/%s/sync",
+				val
+			));
+		} else {
+			set_unsupported(error,
+				GCTL_RESOURCE_KIND_MIRROR, verb);
+			return NULL;
+		}
+
+		g_ptr_array_add(argv, g_strdup("-X"));
+		g_ptr_array_add(argv, g_strdup("POST"));
+		break;
+
+	default:
+		set_unsupported(error, GCTL_RESOURCE_KIND_MIRROR, verb);
+		return NULL;
+	}
+
+	g_ptr_array_add(argv, NULL);
+	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
+}
+
 /* ── build_argv: dispatch ─────────────────────────────────────────── */
 
 static gchar **
@@ -861,6 +999,9 @@ gitlab_forge_build_argv(
 
 	case GCTL_RESOURCE_KIND_RELEASE:
 		return build_release_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_MIRROR:
+		return build_mirror_argv(verb, context, params, error);
 
 	default:
 		g_set_error(

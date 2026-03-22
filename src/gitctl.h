@@ -47,6 +47,7 @@
 #include "commands/gitctl-cmd-issue.h"
 #include "commands/gitctl-cmd-repo.h"
 #include "commands/gitctl-cmd-release.h"
+#include "commands/gitctl-cmd-mirror.h"
 #include "commands/gitctl-cmd-api.h"
 #include "commands/gitctl-cmd-config.h"
 #include "commands/gitctl-cmd-completion.h"

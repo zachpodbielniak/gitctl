@@ -828,6 +828,40 @@ build_releases_argv(
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
 
+/* ── build_argv: Mirror operations ────────────────────────────────── */
+
+/**
+ * build_mirror_argv:
+ * @verb: the action to perform on the mirror
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Gitea has no CLI support for mirror operations.  All verbs
+ * return %GCTL_ERROR_FORGE_UNSUPPORTED so that the common layer
+ * falls back to the API via gitea_forge_build_api_argv(), which
+ * constructs `tea api` calls against the Gitea REST endpoint.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_mirror_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	/*
+	 * The tea CLI does not expose mirror management commands.
+	 * Return UNSUPPORTED for every verb so the common dispatch
+	 * layer triggers the API fallback path, which constructs
+	 * the appropriate REST call via build_api_argv.
+	 */
+	set_unsupported(error, GCTL_RESOURCE_KIND_MIRROR, verb);
+	return NULL;
+}
+
 /* ── build_argv: dispatch ─────────────────────────────────────────── */
 
 static gchar **
@@ -852,6 +886,9 @@ gitea_forge_build_argv(
 
 	case GCTL_RESOURCE_KIND_RELEASE:
 		return build_releases_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_MIRROR:
+		return build_mirror_argv(verb, context, params, error);
 
 	default:
 		g_set_error(

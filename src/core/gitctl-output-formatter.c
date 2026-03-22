@@ -145,6 +145,7 @@ get_columns_for_kind(
 	static const gchar *issue_cols[]   = { "#", "TITLE", "STATE", "AUTHOR", NULL };
 	static const gchar *repo_cols[]    = { "NAME", "DESCRIPTION", "VISIBILITY", NULL };
 	static const gchar *release_cols[] = { "TAG", "TITLE", "DATE", NULL };
+	static const gchar *mirror_cols[]  = { "ID", "URL", "DIRECTION", "INTERVAL", NULL };
 
 	switch (kind) {
 	case GCTL_RESOURCE_KIND_PR:
@@ -159,6 +160,9 @@ get_columns_for_kind(
 	case GCTL_RESOURCE_KIND_RELEASE:
 		*n_cols = 3;
 		return release_cols;
+	case GCTL_RESOURCE_KIND_MIRROR:
+		*n_cols = 4;
+		return mirror_cols;
 	default:
 		*n_cols = 4;
 		return pr_cols;
@@ -230,6 +234,29 @@ get_resource_field(
 		}
 		case 1: return gctl_resource_get_title(resource);
 		case 2: return gctl_resource_get_created_at(resource);
+		}
+		break;
+	case GCTL_RESOURCE_KIND_MIRROR:
+		switch (col) {
+		case 0: {
+			const gchar *id;
+
+			id = gctl_resource_get_extra(resource, "mirror_id");
+			return id ? id : "";
+		}
+		case 1: return gctl_resource_get_url(resource);
+		case 2: {
+			const gchar *dir;
+
+			dir = gctl_resource_get_extra(resource, "direction");
+			return dir ? dir : "push";
+		}
+		case 3: {
+			const gchar *interval;
+
+			interval = gctl_resource_get_extra(resource, "interval");
+			return interval ? interval : "";
+		}
 		}
 		break;
 	}

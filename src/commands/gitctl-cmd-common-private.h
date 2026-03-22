@@ -195,6 +195,18 @@ static const GctlApiFallbackEntry api_fallbacks[] = {
 	  "POST", "/repos/{owner}/{repo}/releases" },
 	{ GCTL_RESOURCE_KIND_RELEASE, GCTL_VERB_DELETE,
 	  "DELETE", "/repos/{owner}/{repo}/releases/{number}" },
+
+	/* Mirror operations (push mirrors) */
+	{ GCTL_RESOURCE_KIND_MIRROR, GCTL_VERB_LIST,
+	  "GET", "/repos/{owner}/{repo}/push_mirrors" },
+	{ GCTL_RESOURCE_KIND_MIRROR, GCTL_VERB_CREATE,
+	  "POST", "/repos/{owner}/{repo}/push_mirrors" },
+	{ GCTL_RESOURCE_KIND_MIRROR, GCTL_VERB_DELETE,
+	  "DELETE", "/repos/{owner}/{repo}/push_mirrors/{mirror_id}" },
+	{ GCTL_RESOURCE_KIND_MIRROR, GCTL_VERB_SYNC,
+	  "POST", "/repos/{owner}/{repo}/push_mirrors-sync" },
+	{ GCTL_RESOURCE_KIND_MIRROR, GCTL_VERB_GET,
+	  "GET", "/repos/{owner}/{repo}/push_mirrors/{mirror_id}" },
 };
 
 static inline const GctlApiFallbackEntry *
@@ -219,8 +231,10 @@ gctl_cmd_expand_endpoint(
 ){
 	g_autofree gchar *s1 = NULL;
 	g_autofree gchar *s2 = NULL;
+	g_autofree gchar *s3 = NULL;
 	gchar *result;
 	const gchar *number;
+	const gchar *mirror_id;
 
 	s1 = gctl_str_replace(tmpl, "{owner}",
 	                       gctl_forge_context_get_owner(context));
@@ -232,9 +246,18 @@ gctl_cmd_expand_endpoint(
 		: NULL;
 
 	if (number != NULL)
-		result = gctl_str_replace(s2, "{number}", number);
+		s3 = gctl_str_replace(s2, "{number}", number);
 	else
-		result = g_strdup(s2);
+		s3 = g_strdup(s2);
+
+	mirror_id = (params != NULL)
+		? (const gchar *)g_hash_table_lookup(params, "mirror_id")
+		: NULL;
+
+	if (mirror_id != NULL && strstr(s3, "{mirror_id}") != NULL)
+		result = gctl_str_replace(s3, "{mirror_id}", mirror_id);
+	else
+		result = g_strdup(s3);
 
 	return result;
 }

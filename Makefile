@@ -43,6 +43,7 @@ LIB_SRCS := \
 	src/commands/gitctl-cmd-issue.c \
 	src/commands/gitctl-cmd-repo.c \
 	src/commands/gitctl-cmd-release.c \
+	src/commands/gitctl-cmd-mirror.c \
 	src/commands/gitctl-cmd-api.c \
 	src/commands/gitctl-cmd-config.c \
 	src/commands/gitctl-cmd-completion.c \

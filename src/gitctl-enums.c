@@ -90,6 +90,7 @@ static const GEnumValue gctl_resource_kind_values[] = {
     { GCTL_RESOURCE_KIND_ISSUE,   "GCTL_RESOURCE_KIND_ISSUE",   "issue"   },
     { GCTL_RESOURCE_KIND_REPO,    "GCTL_RESOURCE_KIND_REPO",    "repo"    },
     { GCTL_RESOURCE_KIND_RELEASE, "GCTL_RESOURCE_KIND_RELEASE", "release" },
+    { GCTL_RESOURCE_KIND_MIRROR,  "GCTL_RESOURCE_KIND_MIRROR",  "mirror"  },
     { 0, NULL, NULL }
 };
 
@@ -117,6 +118,7 @@ gctl_resource_kind_to_string(GctlResourceKind kind)
     case GCTL_RESOURCE_KIND_ISSUE:   return "issue";
     case GCTL_RESOURCE_KIND_REPO:    return "repo";
     case GCTL_RESOURCE_KIND_RELEASE: return "release";
+    case GCTL_RESOURCE_KIND_MIRROR:  return "mirror";
     default:                         return "unknown";
     }
 }
@@ -138,6 +140,7 @@ static const GEnumValue gctl_verb_values[] = {
     { GCTL_VERB_FORK,     "GCTL_VERB_FORK",     "fork"     },
     { GCTL_VERB_CLONE,    "GCTL_VERB_CLONE",    "clone"    },
     { GCTL_VERB_BROWSE,   "GCTL_VERB_BROWSE",   "browse"   },
+    { GCTL_VERB_SYNC,     "GCTL_VERB_SYNC",     "sync"     },
     { 0, NULL, NULL }
 };
 
@@ -174,6 +177,7 @@ gctl_verb_to_string(GctlVerb verb)
     case GCTL_VERB_FORK:     return "fork";
     case GCTL_VERB_CLONE:    return "clone";
     case GCTL_VERB_BROWSE:   return "browse";
+    case GCTL_VERB_SYNC:     return "sync";
     default:                 return "unknown";
     }
 }

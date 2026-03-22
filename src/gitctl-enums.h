@@ -64,6 +64,7 @@ GType gctl_output_format_get_type (void) G_GNUC_CONST;
  * @GCTL_RESOURCE_KIND_ISSUE: Issue.
  * @GCTL_RESOURCE_KIND_REPO: Repository.
  * @GCTL_RESOURCE_KIND_RELEASE: Release.
+ * @GCTL_RESOURCE_KIND_MIRROR: Repository mirror (push or pull).
  *
  * The type of forge resource being operated on.
  */
@@ -73,6 +74,7 @@ typedef enum
     GCTL_RESOURCE_KIND_ISSUE,
     GCTL_RESOURCE_KIND_REPO,
     GCTL_RESOURCE_KIND_RELEASE,
+    GCTL_RESOURCE_KIND_MIRROR,
 } GctlResourceKind;
 
 GType gctl_resource_kind_get_type (void) G_GNUC_CONST;
@@ -94,6 +96,7 @@ GType gctl_resource_kind_get_type (void) G_GNUC_CONST;
  * @GCTL_VERB_FORK: Fork a repository.
  * @GCTL_VERB_CLONE: Clone a repository.
  * @GCTL_VERB_BROWSE: Open resource in web browser.
+ * @GCTL_VERB_SYNC: Trigger mirror synchronization.
  *
  * The action to perform on a forge resource.
  */
@@ -113,6 +116,7 @@ typedef enum
     GCTL_VERB_FORK,
     GCTL_VERB_CLONE,
     GCTL_VERB_BROWSE,
+    GCTL_VERB_SYNC,
 } GctlVerb;
 
 GType gctl_verb_get_type (void) G_GNUC_CONST;

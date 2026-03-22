@@ -30,6 +30,7 @@
 #include "commands/gitctl-cmd-issue.h"
 #include "commands/gitctl-cmd-repo.h"
 #include "commands/gitctl-cmd-release.h"
+#include "commands/gitctl-cmd-mirror.h"
 #include "commands/gitctl-cmd-api.h"
 #include "commands/gitctl-cmd-config.h"
 #include "commands/gitctl-cmd-completion.h"
@@ -124,6 +125,7 @@ static const GctlCommand commands[] = {
 	{ "issue",   "Manage issues",              gctl_cmd_issue   },
 	{ "repo",    "Manage repositories",        gctl_cmd_repo    },
 	{ "release", "Manage releases",            gctl_cmd_release },
+	{ "mirror",  "Manage repository mirrors",  gctl_cmd_mirror  },
 	{ "api",     "Make raw API requests",      gctl_cmd_api     },
 	{ "config",  "Manage configuration",       gctl_cmd_config  },
 	{ "completion", "Generate shell completions", gctl_cmd_completion },
