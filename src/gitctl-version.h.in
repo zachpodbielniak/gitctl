@@ -1,0 +1,92 @@
+/*
+ * gitctl-version.h.in - Version Information Template
+ *
+ * Copyright (C) 2026 Zach Podbielniak
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * This file is processed by the build system to generate gitctl-version.h
+ */
+
+#ifndef GCTL_VERSION_H
+#define GCTL_VERSION_H
+
+#if !defined(GCTL_INSIDE) && !defined(GCTL_COMPILATION)
+#error "Only <gitctl.h> can be included directly."
+#endif
+
+#include <glib.h>
+
+G_BEGIN_DECLS
+
+/**
+ * GCTL_VERSION_MAJOR:
+ *
+ * The major version component.
+ */
+#ifndef GCTL_VERSION_MAJOR
+#define GCTL_VERSION_MAJOR (@GCTL_VERSION_MAJOR@)
+#endif
+
+/**
+ * GCTL_VERSION_MINOR:
+ *
+ * The minor version component.
+ */
+#ifndef GCTL_VERSION_MINOR
+#define GCTL_VERSION_MINOR (@GCTL_VERSION_MINOR@)
+#endif
+
+/**
+ * GCTL_VERSION_MICRO:
+ *
+ * The micro version component.
+ */
+#ifndef GCTL_VERSION_MICRO
+#define GCTL_VERSION_MICRO (@GCTL_VERSION_MICRO@)
+#endif
+
+/**
+ * GCTL_VERSION_STRING:
+ *
+ * The full version string.
+ */
+#define GCTL_VERSION_STRING "@GCTL_VERSION@"
+
+/**
+ * GCTL_CHECK_VERSION:
+ * @major: the major version to check for
+ * @minor: the minor version to check for
+ * @micro: the micro version to check for
+ *
+ * Checks whether the library version is at least the requested version.
+ *
+ * Returns: %TRUE if the version is satisfied
+ */
+#define GCTL_CHECK_VERSION(major, minor, micro) \
+    ((GCTL_VERSION_MAJOR > (major)) || \
+     (GCTL_VERSION_MAJOR == (major) && GCTL_VERSION_MINOR > (minor)) || \
+     (GCTL_VERSION_MAJOR == (major) && GCTL_VERSION_MINOR == (minor) && \
+      GCTL_VERSION_MICRO >= (micro)))
+
+/**
+ * gctl_get_version:
+ * @major: (out) (optional): location for major version
+ * @minor: (out) (optional): location for minor version
+ * @micro: (out) (optional): location for micro version
+ *
+ * Retrieves the runtime version of the library.
+ */
+void gctl_get_version (guint *major, guint *minor, guint *micro);
+
+/**
+ * gctl_get_version_string:
+ *
+ * Retrieves the runtime version string.
+ *
+ * Returns: (transfer none): the version string
+ */
+const gchar *gctl_get_version_string (void);
+
+G_END_DECLS
+
+#endif /* GCTL_VERSION_H */

@@ -1,0 +1,29 @@
+# gitctl Default Configuration
+# Copy to ~/.config/gitctl/config.yaml to customize
+
+output: table
+remote: origin
+default_forge: github
+
+forges:
+  github:
+    hosts:
+      - github.com
+    cli: gh
+  gitlab:
+    hosts:
+      - gitlab.com
+    cli: glab
+  forgejo:
+    hosts:
+      - codeberg.org
+    cli: fj
+  gitea:
+    hosts: []
+    cli: tea
+
+aliases:
+  prl: "pr list"
+  prc: "pr create"
+  il: "issue list"
+  ic: "issue create"

@@ -1,0 +1,7 @@
+build/
+src/gitctl-version.h
+*.o
+*.d
+*.so
+*.a
+*.pc
