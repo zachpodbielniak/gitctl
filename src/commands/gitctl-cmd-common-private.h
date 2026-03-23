@@ -455,8 +455,15 @@ gctl_cmd_execute_verb(
 	if (gctl_executor_get_dry_run(executor))
 		return 0;
 
-	/* API fallback returns raw JSON — print as-is, skip parsing */
-	if (used_api_fallback)
+	/*
+	 * API fallback returns raw JSON.  For LIST and GET verbs we
+	 * still attempt to parse it through the forge's parser so
+	 * the user gets nice table output.  For other verbs (create,
+	 * delete, etc.) we print raw JSON since there's no meaningful
+	 * resource to format.
+	 */
+	if (used_api_fallback &&
+	    verb != GCTL_VERB_LIST && verb != GCTL_VERB_GET)
 	{
 		const gchar *stdout_text;
 		stdout_text = gctl_command_result_get_stdout(result);
