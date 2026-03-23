@@ -27,6 +27,7 @@ static const GctlVerbEntry repo_verbs[] = {
 	{ "list",   "List repositories",                GCTL_VERB_LIST   },
 	{ "get",    "View a single repository",         GCTL_VERB_GET    },
 	{ "create", "Create a new repository",          GCTL_VERB_CREATE },
+	{ "edit",   "Edit repository settings",         GCTL_VERB_EDIT   },
 	{ "fork",   "Fork a repository",                GCTL_VERB_FORK   },
 	{ "clone",  "Clone a repository",               GCTL_VERB_CLONE  },
 	{ "delete", "Delete a repository",              GCTL_VERB_DELETE },
@@ -766,6 +767,154 @@ cmd_repo_create(
 	opt_token_gitlab = NULL;
 	opt_token_forgejo = NULL;
 	opt_token_gitea = NULL;
+
+	return ret;
+}
+
+/* ── repo edit ────────────────────────────────────────────────────────── */
+
+/**
+ * cmd_repo_edit:
+ * @app: the #GctlApp instance
+ * @argc: remaining argument count after verb
+ * @argv: remaining argument vector after verb
+ *
+ * Handles "gitctl repo edit [options]".  Edits repository settings
+ * such as visibility, description, default branch, and feature toggles.
+ *
+ * Returns: 0 on success, 1 on error
+ */
+static gint
+cmd_repo_edit(
+	GctlApp  *app,
+	gint      argc,
+	gchar   **argv
+){
+	g_autoptr(GOptionContext) opt_context = NULL;
+	g_autoptr(GHashTable) params = NULL;
+	g_autoptr(GError) error = NULL;
+	gchar *description = NULL;
+	gchar *visibility = NULL;
+	gchar *default_branch = NULL;
+	gchar *homepage = NULL;
+	gboolean enable_issues = FALSE;
+	gboolean disable_issues = FALSE;
+	gboolean enable_wiki = FALSE;
+	gboolean disable_wiki = FALSE;
+	gboolean enable_projects = FALSE;
+	gboolean disable_projects = FALSE;
+	gboolean archive = FALSE;
+	gboolean unarchive = FALSE;
+	gint ret;
+
+	GOptionEntry entries[] = {
+		{ "description", 'd', 0, G_OPTION_ARG_STRING, &description,
+		  "Repository description", "DESC" },
+		{ "visibility", 0, 0, G_OPTION_ARG_STRING, &visibility,
+		  "Visibility: public, private, or internal", "VIS" },
+		{ "default-branch", 0, 0, G_OPTION_ARG_STRING, &default_branch,
+		  "Default branch name", "BRANCH" },
+		{ "homepage", 0, 0, G_OPTION_ARG_STRING, &homepage,
+		  "Repository homepage URL", "URL" },
+		{ "enable-issues", 0, 0, G_OPTION_ARG_NONE, &enable_issues,
+		  "Enable issues", NULL },
+		{ "disable-issues", 0, 0, G_OPTION_ARG_NONE, &disable_issues,
+		  "Disable issues", NULL },
+		{ "enable-wiki", 0, 0, G_OPTION_ARG_NONE, &enable_wiki,
+		  "Enable wiki", NULL },
+		{ "disable-wiki", 0, 0, G_OPTION_ARG_NONE, &disable_wiki,
+		  "Disable wiki", NULL },
+		{ "enable-projects", 0, 0, G_OPTION_ARG_NONE, &enable_projects,
+		  "Enable projects", NULL },
+		{ "disable-projects", 0, 0, G_OPTION_ARG_NONE, &disable_projects,
+		  "Disable projects", NULL },
+		{ "archive", 0, 0, G_OPTION_ARG_NONE, &archive,
+		  "Archive the repository", NULL },
+		{ "unarchive", 0, 0, G_OPTION_ARG_NONE, &unarchive,
+		  "Unarchive the repository", NULL },
+		{ NULL }
+	};
+
+	opt_context = g_option_context_new("- edit repository settings");
+	g_option_context_add_main_entries(opt_context, entries, NULL);
+
+	if (!g_option_context_parse(opt_context, &argc, &argv, &error))
+	{
+		g_printerr("error: %s\n", error->message);
+		return 1;
+	}
+
+	/* At least one option must be specified */
+	if (description == NULL && visibility == NULL &&
+	    default_branch == NULL && homepage == NULL &&
+	    !enable_issues && !disable_issues &&
+	    !enable_wiki && !disable_wiki &&
+	    !enable_projects && !disable_projects &&
+	    !archive && !unarchive)
+	{
+		g_printerr("error: at least one setting must be specified\n");
+		g_printerr("Usage: gitctl repo edit [options]\n");
+		g_printerr("  -d, --description DESC    Set description\n");
+		g_printerr("  --visibility VIS          Set public/private/internal\n");
+		g_printerr("  --default-branch BRANCH   Set default branch\n");
+		g_printerr("  --homepage URL            Set homepage URL\n");
+		g_printerr("  --enable-issues           Enable issues\n");
+		g_printerr("  --disable-issues          Disable issues\n");
+		g_printerr("  --enable-wiki             Enable wiki\n");
+		g_printerr("  --disable-wiki            Disable wiki\n");
+		g_printerr("  --enable-projects         Enable projects\n");
+		g_printerr("  --disable-projects        Disable projects\n");
+		g_printerr("  --archive                 Archive the repository\n");
+		g_printerr("  --unarchive               Unarchive the repository\n");
+		return 1;
+	}
+
+	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	if (description != NULL)
+		g_hash_table_insert(params, g_strdup("description"),
+		                    g_strdup(description));
+	if (visibility != NULL)
+		g_hash_table_insert(params, g_strdup("visibility"),
+		                    g_strdup(visibility));
+	if (default_branch != NULL)
+		g_hash_table_insert(params, g_strdup("default_branch"),
+		                    g_strdup(default_branch));
+	if (homepage != NULL)
+		g_hash_table_insert(params, g_strdup("homepage"),
+		                    g_strdup(homepage));
+	if (enable_issues)
+		g_hash_table_insert(params, g_strdup("enable_issues"),
+		                    g_strdup("true"));
+	if (disable_issues)
+		g_hash_table_insert(params, g_strdup("enable_issues"),
+		                    g_strdup("false"));
+	if (enable_wiki)
+		g_hash_table_insert(params, g_strdup("enable_wiki"),
+		                    g_strdup("true"));
+	if (disable_wiki)
+		g_hash_table_insert(params, g_strdup("enable_wiki"),
+		                    g_strdup("false"));
+	if (enable_projects)
+		g_hash_table_insert(params, g_strdup("enable_projects"),
+		                    g_strdup("true"));
+	if (disable_projects)
+		g_hash_table_insert(params, g_strdup("enable_projects"),
+		                    g_strdup("false"));
+	if (archive)
+		g_hash_table_insert(params, g_strdup("archive"),
+		                    g_strdup("true"));
+	if (unarchive)
+		g_hash_table_insert(params, g_strdup("archive"),
+		                    g_strdup("false"));
+
+	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
+	                            GCTL_VERB_EDIT, NULL, params);
+
+	g_free(description);
+	g_free(visibility);
+	g_free(default_branch);
+	g_free(homepage);
 
 	return ret;
 }
@@ -1587,6 +1736,8 @@ gctl_cmd_repo(
 			return cmd_repo_get(app, argc, argv);
 		case GCTL_VERB_CREATE:
 			return cmd_repo_create(app, argc, argv);
+		case GCTL_VERB_EDIT:
+			return cmd_repo_edit(app, argc, argv);
 		case GCTL_VERB_FORK:
 			return cmd_repo_fork(app, argc, argv);
 		case GCTL_VERB_CLONE:

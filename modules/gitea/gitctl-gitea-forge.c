@@ -724,6 +724,11 @@ build_repos_argv(
 		g_ptr_array_add(argv, g_strdup("--web"));
 		break;
 
+	case GCTL_VERB_EDIT:
+		/* tea has no edit/update command for repos — use API fallback */
+		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+		return NULL;
+
 	case GCTL_VERB_MIGRATE:
 		/*
 		 * tea uses "repos migrate" for migration.  Reset the argv

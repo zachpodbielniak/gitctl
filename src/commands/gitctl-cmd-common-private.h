@@ -186,6 +186,8 @@ static const GctlApiFallbackEntry api_fallbacks[] = {
 	  "DELETE", "/repos/{owner}/{repo}" },
 	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_FORK,
 	  "POST", "/repos/{owner}/{repo}/forks" },
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_EDIT,
+	  "PATCH", "/repos/{owner}/{repo}" },
 
 	/* Release operations */
 	{ GCTL_RESOURCE_KIND_RELEASE, GCTL_VERB_LIST,
@@ -494,9 +496,71 @@ gctl_cmd_execute_verb(
 			endpoint = gctl_cmd_expand_endpoint(
 			    fallback->endpoint, context, params);
 
-			/* Check for a JSON body in params */
+			/* Check for an explicit JSON body in params */
 			if (params != NULL)
 				body_str = (const gchar *)g_hash_table_lookup(params, "body");
+
+			/*
+			 * For PATCH/POST without an explicit body, auto-build
+			 * a JSON object from the remaining params.  This lets
+			 * commands like "repo edit --description X --visibility Y"
+			 * work through the API fallback without manually
+			 * constructing a JSON body.
+			 */
+			if (body_str == NULL && params != NULL &&
+			    (g_strcmp0(fallback->method, "PATCH") == 0 ||
+			     g_strcmp0(fallback->method, "POST") == 0))
+			{
+				GHashTableIter iter;
+				gpointer k;
+				gpointer v;
+				g_autoptr(GString) auto_body = NULL;
+				gboolean first = TRUE;
+
+				auto_body = g_string_new("{");
+
+				g_hash_table_iter_init(&iter, params);
+				while (g_hash_table_iter_next(&iter, &k, &v))
+				{
+					const gchar *key = (const gchar *)k;
+					const gchar *val = (const gchar *)v;
+
+					/* Skip internal keys */
+					if (g_strcmp0(key, "number") == 0 ||
+					    g_strcmp0(key, "mirror_id") == 0 ||
+					    g_strcmp0(key, "body") == 0)
+						continue;
+
+					if (!first)
+						g_string_append_c(auto_body, ',');
+					first = FALSE;
+
+					/* Boolean values */
+					if (g_strcmp0(val, "true") == 0 ||
+					    g_strcmp0(val, "false") == 0)
+					{
+						g_string_append_printf(auto_body,
+							"\"%s\":%s", key, val);
+					}
+					else
+					{
+						g_string_append_printf(auto_body,
+							"\"%s\":\"%s\"", key, val);
+					}
+				}
+
+				g_string_append_c(auto_body, '}');
+
+				if (!first)
+					body_str = auto_body->str;
+
+				/* Keep auto_body alive through the argv build below */
+				g_hash_table_insert(params, g_strdup("_auto_body"),
+				                    g_strdup(auto_body->str));
+				if (!first)
+					body_str = (const gchar *)g_hash_table_lookup(
+						params, "_auto_body");
+			}
 
 			if (gctl_app_get_verbose(app) || gctl_executor_get_dry_run(executor))
 				g_printerr("note: %s %s unsupported by CLI, falling back to API: %s %s\n",

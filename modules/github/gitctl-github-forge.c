@@ -790,6 +790,60 @@ build_repo_argv(
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
 		return NULL;
 
+	case GCTL_VERB_EDIT:
+		g_ptr_array_add(argv, g_strdup("edit"));
+
+		val = get_param(params, "description");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--description"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "visibility");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--visibility"));
+			g_ptr_array_add(argv, g_strdup(val));
+			g_ptr_array_add(argv, g_strdup("--accept-visibility-change-consequences"));
+		}
+
+		val = get_param(params, "default_branch");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--default-branch"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "homepage");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--homepage"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "enable_issues");
+		if (val != NULL) {
+			if (g_strcmp0(val, "true") == 0)
+				g_ptr_array_add(argv, g_strdup("--enable-issues"));
+			else
+				g_ptr_array_add(argv, g_strdup("--enable-issues=false"));
+		}
+
+		val = get_param(params, "enable_wiki");
+		if (val != NULL) {
+			if (g_strcmp0(val, "true") == 0)
+				g_ptr_array_add(argv, g_strdup("--enable-wiki"));
+			else
+				g_ptr_array_add(argv, g_strdup("--enable-wiki=false"));
+		}
+
+		val = get_param(params, "enable_projects");
+		if (val != NULL) {
+			if (g_strcmp0(val, "true") == 0)
+				g_ptr_array_add(argv, g_strdup("--enable-projects"));
+			else
+				g_ptr_array_add(argv, g_strdup("--enable-projects=false"));
+		}
+
+		break;
+
 	case GCTL_VERB_MIGRATE:
 		/* gh has no native migrate/import command — unsupported */
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);

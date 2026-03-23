@@ -640,6 +640,11 @@ build_repo_argv(
 		g_ptr_array_add(argv, g_strdup("--web"));
 		break;
 
+	case GCTL_VERB_EDIT:
+		/* fj has no edit/update command for repos — use API fallback */
+		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+		return NULL;
+
 	case GCTL_VERB_MIGRATE:
 		/*
 		 * If a source_token is present we need to pass it to the

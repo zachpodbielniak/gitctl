@@ -29,7 +29,7 @@ print_bash_completion(void)
         "\n"
         "    local verbs_pr=\"list get create edit close reopen merge checkout comment review browse diff\"\n"
         "    local verbs_issue=\"list get create edit close reopen comment browse\"\n"
-        "    local verbs_repo=\"list get create delete fork clone browse star unstar migrate\"\n"
+        "    local verbs_repo=\"list get create edit delete fork clone browse star unstar migrate\"\n"
         "    local verbs_release=\"list get create delete\"\n"
         "    local verbs_api=\"GET POST PUT PATCH DELETE\"\n"
         "    local verbs_mirror=\"list add remove sync get\"\n"

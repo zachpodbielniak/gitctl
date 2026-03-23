@@ -754,6 +754,35 @@ build_repo_argv(
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
 		return NULL;
 
+	case GCTL_VERB_EDIT:
+		/* If visibility change requested, use API (glab doesn't support it) */
+		val = get_param(params, "visibility");
+		if (val != NULL) {
+			set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+			return NULL;
+		}
+
+		/* glab uses "update" instead of "edit" */
+		g_ptr_array_add(argv, g_strdup("update"));
+
+		val = get_param(params, "description");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--description"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "default_branch");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--defaultBranch"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "archive");
+		if (val != NULL && g_strcmp0(val, "true") == 0)
+			g_ptr_array_add(argv, g_strdup("--archive"));
+
+		break;
+
 	case GCTL_VERB_MIGRATE:
 		/* glab has no native migrate command — unsupported */
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
