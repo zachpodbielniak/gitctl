@@ -19,6 +19,7 @@
 
 #include "commands/gitctl-cmd-common-private.h"
 #include "commands/gitctl-cmd-repo.h"
+#include "commands/gitctl-cmd-mirror.h"
 
 /* ── Verb dispatch table ─────────────────────────────────────────────── */
 
@@ -49,6 +50,8 @@ static void
 print_usage(void)
 {
 	gctl_cmd_print_verb_table("repo", repo_verbs, N_REPO_VERBS);
+	g_printerr("  %-14s %s\n", "mirror",
+	           "Manage push/pull mirrors (see: gitctl mirror --help)");
 }
 
 /* ── repo list ───────────────────────────────────────────────────────── */
@@ -1555,6 +1558,17 @@ gctl_cmd_repo(
 	}
 
 	verb_name = argv[0];
+
+	/*
+	 * "gitctl repo mirror ..." delegates to the mirror command handler.
+	 * This provides a natural way to manage mirrors via the repo noun:
+	 *   gitctl repo mirror list
+	 *   gitctl repo mirror add --url <url>
+	 *   gitctl repo mirror sync
+	 */
+	if (g_strcmp0(verb_name, "mirror") == 0)
+		return gctl_cmd_mirror(app, argc - 1, argv + 1);
+
 	entry = gctl_cmd_find_verb(repo_verbs, N_REPO_VERBS, verb_name);
 
 	if (entry == NULL)
