@@ -160,6 +160,40 @@ get_param(GHashTable *params, const gchar *key)
 	return (const gchar *)g_hash_table_lookup(params, key);
 }
 
+/*
+ * start_fj_argv:
+ * @context: (nullable): the forge context
+ * @noun: the fj subcommand noun (e.g. "repo", "pr", "issue")
+ *
+ * Creates a new GPtrArray and populates it with:
+ *   fj [-H <host>] <noun>
+ *
+ * The --host flag is added when the context provides a hostname,
+ * ensuring fj targets the correct Forgejo instance even when not
+ * inside a repo directory with a matching remote.
+ *
+ * Returns: (transfer full): a new GPtrArray
+ */
+static GPtrArray *
+start_fj_argv(GctlForgeContext *context, const gchar *noun)
+{
+	GPtrArray *argv;
+	const gchar *host;
+
+	argv = g_ptr_array_new_with_free_func(g_free);
+	g_ptr_array_add(argv, g_strdup("fj"));
+
+	host = (context != NULL) ? gctl_forge_context_get_host(context) : NULL;
+	if (host != NULL && *host != '\0') {
+		g_ptr_array_add(argv, g_strdup("-H"));
+		g_ptr_array_add(argv, g_strdup(host));
+	}
+
+	g_ptr_array_add(argv, g_strdup(noun));
+
+	return argv;
+}
+
 static void
 set_unsupported(GError **error, GctlResourceKind resource, GctlVerb verb)
 {
@@ -246,9 +280,7 @@ build_pr_argv(
 	g_autoptr(GPtrArray) argv = NULL;
 	const gchar *val = NULL;
 
-	argv = g_ptr_array_new_with_free_func(g_free);
-	g_ptr_array_add(argv, g_strdup("fj"));
-	g_ptr_array_add(argv, g_strdup("pr"));
+	argv = start_fj_argv(context, "pr");
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
@@ -413,9 +445,7 @@ build_issue_argv(
 	g_autoptr(GPtrArray) argv = NULL;
 	const gchar *val = NULL;
 
-	argv = g_ptr_array_new_with_free_func(g_free);
-	g_ptr_array_add(argv, g_strdup("fj"));
-	g_ptr_array_add(argv, g_strdup("issue"));
+	argv = start_fj_argv(context, "issue");
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
@@ -533,9 +563,7 @@ build_repo_argv(
 	g_autoptr(GPtrArray) argv = NULL;
 	const gchar *val = NULL;
 
-	argv = g_ptr_array_new_with_free_func(g_free);
-	g_ptr_array_add(argv, g_strdup("fj"));
-	g_ptr_array_add(argv, g_strdup("repo"));
+	argv = start_fj_argv(context, "repo");
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
@@ -678,9 +706,7 @@ build_release_argv(
 	g_autoptr(GPtrArray) argv = NULL;
 	const gchar *val = NULL;
 
-	argv = g_ptr_array_new_with_free_func(g_free);
-	g_ptr_array_add(argv, g_strdup("fj"));
-	g_ptr_array_add(argv, g_strdup("release"));
+	argv = start_fj_argv(context, "release");
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
