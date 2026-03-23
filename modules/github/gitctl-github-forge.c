@@ -793,6 +793,16 @@ build_repo_argv(
 	case GCTL_VERB_EDIT:
 		g_ptr_array_add(argv, g_strdup("edit"));
 
+		/* Pass owner/repo so gh doesn't rely on git remotes */
+		if (context != NULL &&
+		    gctl_forge_context_get_owner(context) != NULL &&
+		    gctl_forge_context_get_repo_name(context) != NULL)
+		{
+			g_autofree gchar *slug = NULL;
+			slug = gctl_forge_context_get_owner_repo(context);
+			g_ptr_array_add(argv, g_strdup(slug));
+		}
+
 		val = get_param(params, "description");
 		if (val != NULL) {
 			g_ptr_array_add(argv, g_strdup("--description"));
