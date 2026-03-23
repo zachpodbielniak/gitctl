@@ -374,6 +374,66 @@ cmd_mirror_add(
 	if (interval == NULL)
 		interval = g_strdup("8h0m0s");
 
+	/*
+	 * Auto-detect username and token from the mirror URL when not
+	 * explicitly provided.  Parse the URL to determine the destination
+	 * forge, then use the corresponding env var for the token and
+	 * extract the owner from the URL path as the username.
+	 */
+	{
+		g_autofree gchar *dest_host = NULL;
+		g_autofree gchar *dest_owner = NULL;
+		g_autofree gchar *dest_repo = NULL;
+		GctlConfig *cfg;
+
+		cfg = gctl_app_get_config(app);
+
+		if (parse_mirror_url(mirror_url, &dest_host,
+		                     &dest_owner, &dest_repo))
+		{
+			/* Auto-detect username from URL owner */
+			if (mirror_username == NULL && dest_owner != NULL)
+				mirror_username = g_strdup(dest_owner);
+
+			/* Auto-detect token from destination forge env var */
+			if (mirror_token == NULL && cfg != NULL)
+			{
+				GctlForgeType dest_ft;
+				const gchar *env_token = NULL;
+
+				dest_ft = gctl_config_get_forge_for_host(
+					cfg, dest_host);
+
+				switch (dest_ft) {
+				case GCTL_FORGE_TYPE_GITHUB:
+					env_token = g_getenv("GITHUB_TOKEN");
+					break;
+				case GCTL_FORGE_TYPE_GITLAB:
+					env_token = g_getenv("GITLAB_TOKEN");
+					break;
+				case GCTL_FORGE_TYPE_FORGEJO:
+					env_token = g_getenv("FORGEJO_TOKEN");
+					break;
+				case GCTL_FORGE_TYPE_GITEA:
+					env_token = g_getenv("GITEA_TOKEN");
+					break;
+				default:
+					break;
+				}
+
+				if (env_token != NULL && *env_token != '\0') {
+					mirror_token = g_strdup(env_token);
+					if (gctl_app_get_verbose(app))
+						g_printerr("note: using %s token "
+						           "from env var for mirror "
+						           "destination\n",
+						           gctl_forge_type_to_string(
+						               dest_ft));
+				}
+			}
+		}
+	}
+
 	/* Resolve the source forge context */
 	executor = gctl_app_get_executor(app);
 	resolver = gctl_app_get_resolver(app);
