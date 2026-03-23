@@ -175,6 +175,44 @@ gctl_config_set_default_remote(
 );
 
 /**
+ * gctl_config_set_default_output_format:
+ * @self: a #GctlConfig
+ * @format: the new default output format
+ *
+ * Overrides the default output format stored in the configuration.
+ */
+void
+gctl_config_set_default_output_format(
+	GctlConfig       *self,
+	GctlOutputFormat  format
+);
+
+/**
+ * gctl_config_set_default_forge:
+ * @self: a #GctlConfig
+ * @forge_type: the new default forge type
+ *
+ * Overrides the default forge type stored in the configuration.
+ */
+void
+gctl_config_set_default_forge(
+	GctlConfig    *self,
+	GctlForgeType  forge_type
+);
+
+/**
+ * gctl_config_get_config_path:
+ * @self: a #GctlConfig
+ *
+ * Returns the path to the configuration file that was loaded, or
+ * %NULL if no file has been loaded yet.
+ *
+ * Returns: (transfer none) (nullable): the configuration file path
+ */
+const gchar *
+gctl_config_get_config_path(GctlConfig *self);
+
+/**
  * gctl_config_get_alias:
  * @self: a #GctlConfig
  * @alias: the alias name to look up

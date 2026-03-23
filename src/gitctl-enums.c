@@ -90,7 +90,13 @@ static const GEnumValue gctl_resource_kind_values[] = {
     { GCTL_RESOURCE_KIND_ISSUE,   "GCTL_RESOURCE_KIND_ISSUE",   "issue"   },
     { GCTL_RESOURCE_KIND_REPO,    "GCTL_RESOURCE_KIND_REPO",    "repo"    },
     { GCTL_RESOURCE_KIND_RELEASE, "GCTL_RESOURCE_KIND_RELEASE", "release" },
-    { GCTL_RESOURCE_KIND_MIRROR,  "GCTL_RESOURCE_KIND_MIRROR",  "mirror"  },
+    { GCTL_RESOURCE_KIND_MIRROR,       "GCTL_RESOURCE_KIND_MIRROR",       "mirror"       },
+    { GCTL_RESOURCE_KIND_CI,           "GCTL_RESOURCE_KIND_CI",           "ci"           },
+    { GCTL_RESOURCE_KIND_COMMIT,       "GCTL_RESOURCE_KIND_COMMIT",       "commit"       },
+    { GCTL_RESOURCE_KIND_LABEL,        "GCTL_RESOURCE_KIND_LABEL",        "label"        },
+    { GCTL_RESOURCE_KIND_NOTIFICATION, "GCTL_RESOURCE_KIND_NOTIFICATION", "notification" },
+    { GCTL_RESOURCE_KIND_KEY,          "GCTL_RESOURCE_KIND_KEY",          "key"          },
+    { GCTL_RESOURCE_KIND_WEBHOOK,      "GCTL_RESOURCE_KIND_WEBHOOK",      "webhook"      },
     { 0, NULL, NULL }
 };
 
@@ -118,8 +124,14 @@ gctl_resource_kind_to_string(GctlResourceKind kind)
     case GCTL_RESOURCE_KIND_ISSUE:   return "issue";
     case GCTL_RESOURCE_KIND_REPO:    return "repo";
     case GCTL_RESOURCE_KIND_RELEASE: return "release";
-    case GCTL_RESOURCE_KIND_MIRROR:  return "mirror";
-    default:                         return "unknown";
+    case GCTL_RESOURCE_KIND_MIRROR:       return "mirror";
+    case GCTL_RESOURCE_KIND_CI:           return "ci";
+    case GCTL_RESOURCE_KIND_COMMIT:       return "commit";
+    case GCTL_RESOURCE_KIND_LABEL:        return "label";
+    case GCTL_RESOURCE_KIND_NOTIFICATION: return "notification";
+    case GCTL_RESOURCE_KIND_KEY:          return "key";
+    case GCTL_RESOURCE_KIND_WEBHOOK:      return "webhook";
+    default:                              return "unknown";
     }
 }
 
@@ -141,6 +153,11 @@ static const GEnumValue gctl_verb_values[] = {
     { GCTL_VERB_CLONE,    "GCTL_VERB_CLONE",    "clone"    },
     { GCTL_VERB_BROWSE,   "GCTL_VERB_BROWSE",   "browse"   },
     { GCTL_VERB_SYNC,     "GCTL_VERB_SYNC",     "sync"     },
+    { GCTL_VERB_DIFF,     "GCTL_VERB_DIFF",     "diff"     },
+    { GCTL_VERB_LOG,      "GCTL_VERB_LOG",      "log"      },
+    { GCTL_VERB_READ,     "GCTL_VERB_READ",     "read"     },
+    { GCTL_VERB_STAR,     "GCTL_VERB_STAR",     "star"     },
+    { GCTL_VERB_UNSTAR,   "GCTL_VERB_UNSTAR",   "unstar"   },
     { 0, NULL, NULL }
 };
 
@@ -178,6 +195,11 @@ gctl_verb_to_string(GctlVerb verb)
     case GCTL_VERB_CLONE:    return "clone";
     case GCTL_VERB_BROWSE:   return "browse";
     case GCTL_VERB_SYNC:     return "sync";
+    case GCTL_VERB_DIFF:     return "diff";
+    case GCTL_VERB_LOG:      return "log";
+    case GCTL_VERB_READ:     return "read";
+    case GCTL_VERB_STAR:     return "star";
+    case GCTL_VERB_UNSTAR:   return "unstar";
     default:                 return "unknown";
     }
 }

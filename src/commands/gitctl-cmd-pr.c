@@ -32,6 +32,7 @@ static const GctlVerbEntry pr_verbs[] = {
 	{ "comment",  "Comment on a pull request",            GCTL_VERB_COMMENT  },
 	{ "review",   "Review a pull request",                GCTL_VERB_REVIEW   },
 	{ "browse",   "Open a pull request in the browser",   GCTL_VERB_BROWSE   },
+	{ "diff",     "View pull request diff",              GCTL_VERB_DIFF     },
 };
 
 static const gsize N_PR_VERBS = G_N_ELEMENTS(pr_verbs);
@@ -694,6 +695,41 @@ cmd_pr_browse(
 	                             GCTL_VERB_BROWSE, pr_number, params);
 }
 
+/* ── pr diff ─────────────────────────────────────────────────────────── */
+
+/**
+ * cmd_pr_diff:
+ * @app: the #GctlApp instance
+ * @argc: remaining argument count after verb
+ * @argv: remaining argument vector after verb
+ *
+ * Handles "gitctl pr diff <number>".  Views the diff of a pull request.
+ *
+ * Returns: 0 on success, 1 on error
+ */
+static gint
+cmd_pr_diff(
+	GctlApp  *app,
+	gint      argc,
+	gchar   **argv
+){
+	g_autoptr(GHashTable) params = NULL;
+	const gchar *pr_number;
+
+	if (argc < 2)
+	{
+		g_printerr("error: pull request number required\n");
+		g_printerr("Usage: gitctl pr diff <number>\n");
+		return 1;
+	}
+
+	pr_number = argv[1];
+	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_PR,
+	                             GCTL_VERB_DIFF, pr_number, params);
+}
+
 /* ── Main entry point ────────────────────────────────────────────────── */
 
 /**
@@ -765,6 +801,8 @@ gctl_cmd_pr(
 			return cmd_pr_review(app, argc, argv);
 		case GCTL_VERB_BROWSE:
 			return cmd_pr_browse(app, argc, argv);
+		case GCTL_VERB_DIFF:
+			return cmd_pr_diff(app, argc, argv);
 		default:
 			g_printerr("error: verb '%s' not implemented for pr\n",
 			           verb_name);

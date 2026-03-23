@@ -47,6 +47,13 @@ LIB_SRCS := \
 	src/commands/gitctl-cmd-api.c \
 	src/commands/gitctl-cmd-config.c \
 	src/commands/gitctl-cmd-completion.c \
+	src/commands/gitctl-cmd-status.c \
+	src/commands/gitctl-cmd-ci.c \
+	src/commands/gitctl-cmd-commit.c \
+	src/commands/gitctl-cmd-label.c \
+	src/commands/gitctl-cmd-notification.c \
+	src/commands/gitctl-cmd-key.c \
+	src/commands/gitctl-cmd-webhook.c \
 	src/module/gitctl-module.c \
 	src/module/gitctl-module-manager.c
 

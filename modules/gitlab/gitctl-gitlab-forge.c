@@ -450,6 +450,14 @@ build_mr_argv(
 		}
 		break;
 
+	case GCTL_VERB_DIFF:
+		g_ptr_array_add(argv, g_strdup("diff"));
+
+		val = get_param(params, "number");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+		break;
+
 	default:
 		set_unsupported(error, GCTL_RESOURCE_KIND_PR, verb);
 		return NULL;
@@ -736,6 +744,16 @@ build_repo_argv(
 		g_ptr_array_add(argv, g_strdup("--web"));
 		break;
 
+	case GCTL_VERB_STAR:
+		/* glab has no star subcommand — use API fallback */
+		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+		return NULL;
+
+	case GCTL_VERB_UNSTAR:
+		/* glab has no unstar subcommand — use API fallback */
+		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+		return NULL;
+
 	default:
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
 		return NULL;
@@ -975,6 +993,296 @@ build_mirror_argv(
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
 
+/* ── build_argv: CI operations ─────────────────────────────────────── */
+
+/**
+ * build_ci_argv:
+ * @verb: the action to perform on the CI pipeline
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Builds glab CLI argv for CI pipeline operations.
+ * Uses `glab ci` subcommands.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_ci_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	g_autoptr(GPtrArray) argv = NULL;
+	const gchar *val = NULL;
+
+	argv = g_ptr_array_new_with_free_func(g_free);
+	g_ptr_array_add(argv, g_strdup("glab"));
+	g_ptr_array_add(argv, g_strdup("ci"));
+
+	switch (verb) {
+	case GCTL_VERB_LIST:
+		g_ptr_array_add(argv, g_strdup("list"));
+
+		g_ptr_array_add(argv, g_strdup("-F"));
+		g_ptr_array_add(argv, g_strdup("json"));
+		break;
+
+	case GCTL_VERB_GET:
+		g_ptr_array_add(argv, g_strdup("view"));
+
+		val = get_param(params, "number");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+
+		g_ptr_array_add(argv, g_strdup("-F"));
+		g_ptr_array_add(argv, g_strdup("json"));
+		break;
+
+	case GCTL_VERB_LOG:
+		g_ptr_array_add(argv, g_strdup("trace"));
+
+		val = get_param(params, "number");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+		break;
+
+	case GCTL_VERB_BROWSE:
+		g_ptr_array_add(argv, g_strdup("view"));
+
+		val = get_param(params, "number");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+
+		g_ptr_array_add(argv, g_strdup("--web"));
+		break;
+
+	default:
+		set_unsupported(error, GCTL_RESOURCE_KIND_CI, verb);
+		return NULL;
+	}
+
+	g_ptr_array_add(argv, NULL);
+	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
+}
+
+/* ── build_argv: Commit operations ────────────────────────────────── */
+
+/**
+ * build_commit_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Commit operations use local git directly, so all verbs return
+ * unsupported.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_commit_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_COMMIT, verb);
+	return NULL;
+}
+
+/* ── build_argv: Label operations ─────────────────────────────────── */
+
+/**
+ * build_label_argv:
+ * @verb: the action to perform on the label
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Builds glab CLI argv for label operations.
+ * Uses `glab label` subcommands.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_label_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	g_autoptr(GPtrArray) argv = NULL;
+	const gchar *val = NULL;
+
+	argv = g_ptr_array_new_with_free_func(g_free);
+	g_ptr_array_add(argv, g_strdup("glab"));
+	g_ptr_array_add(argv, g_strdup("label"));
+
+	switch (verb) {
+	case GCTL_VERB_LIST:
+		g_ptr_array_add(argv, g_strdup("list"));
+
+		g_ptr_array_add(argv, g_strdup("-F"));
+		g_ptr_array_add(argv, g_strdup("json"));
+		break;
+
+	case GCTL_VERB_CREATE:
+		g_ptr_array_add(argv, g_strdup("create"));
+
+		val = get_param(params, "name");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+
+		val = get_param(params, "color");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--color"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "description");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--description"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+		break;
+
+	case GCTL_VERB_DELETE:
+		g_ptr_array_add(argv, g_strdup("delete"));
+
+		val = get_param(params, "name");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+		break;
+
+	default:
+		set_unsupported(error, GCTL_RESOURCE_KIND_LABEL, verb);
+		return NULL;
+	}
+
+	g_ptr_array_add(argv, NULL);
+	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
+}
+
+/* ── build_argv: Notification operations ──────────────────────────── */
+
+/**
+ * build_notification_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * GitLab notifications (todos) are not supported by the glab CLI
+ * in a structured way.  All verbs return unsupported to trigger
+ * the API fallback.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_notification_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_NOTIFICATION, verb);
+	return NULL;
+}
+
+/* ── build_argv: Key operations ───────────────────────────────────── */
+
+/**
+ * build_key_argv:
+ * @verb: the action to perform on the SSH key
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Builds glab CLI argv for SSH key operations.
+ * Uses `glab ssh-key` subcommands.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_key_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	g_autoptr(GPtrArray) argv = NULL;
+	const gchar *val = NULL;
+
+	argv = g_ptr_array_new_with_free_func(g_free);
+	g_ptr_array_add(argv, g_strdup("glab"));
+	g_ptr_array_add(argv, g_strdup("ssh-key"));
+
+	switch (verb) {
+	case GCTL_VERB_LIST:
+		g_ptr_array_add(argv, g_strdup("list"));
+		break;
+
+	case GCTL_VERB_CREATE:
+		g_ptr_array_add(argv, g_strdup("add"));
+
+		val = get_param(params, "title");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--title"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+		/* glab ssh-key add reads the key from stdin */
+		break;
+
+	case GCTL_VERB_DELETE:
+		g_ptr_array_add(argv, g_strdup("delete"));
+
+		val = get_param(params, "number");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+		break;
+
+	default:
+		set_unsupported(error, GCTL_RESOURCE_KIND_KEY, verb);
+		return NULL;
+	}
+
+	g_ptr_array_add(argv, NULL);
+	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
+}
+
+/* ── build_argv: Webhook operations ───────────────────────────────── */
+
+/**
+ * build_webhook_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Webhook operations are not supported by the glab CLI directly.
+ * All verbs return unsupported to trigger the API fallback.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_webhook_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_WEBHOOK, verb);
+	return NULL;
+}
+
 /* ── build_argv: dispatch ─────────────────────────────────────────── */
 
 static gchar **
@@ -1002,6 +1310,24 @@ gitlab_forge_build_argv(
 
 	case GCTL_RESOURCE_KIND_MIRROR:
 		return build_mirror_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_CI:
+		return build_ci_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_COMMIT:
+		return build_commit_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_LABEL:
+		return build_label_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_NOTIFICATION:
+		return build_notification_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_KEY:
+		return build_key_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_WEBHOOK:
+		return build_webhook_argv(verb, context, params, error);
 
 	default:
 		g_set_error(

@@ -19,6 +19,8 @@ struct _GctlContextResolver
 
 	GctlConfig    *config;       /* weak ref, not owned */
 	GctlForgeType  forced_forge;
+	gchar         *forced_owner; /* --repo override: owner */
+	gchar         *forced_repo;  /* --repo override: repo name */
 };
 
 G_DEFINE_TYPE(GctlContextResolver, gctl_context_resolver, G_TYPE_OBJECT)
@@ -38,6 +40,11 @@ gctl_context_resolver_finalize(GObject *object)
 	 */
 	self->config = NULL;
 
+	g_free(self->forced_owner);
+	g_free(self->forced_repo);
+	self->forced_owner = NULL;
+	self->forced_repo  = NULL;
+
 	G_OBJECT_CLASS(gctl_context_resolver_parent_class)->finalize(object);
 }
 
@@ -55,6 +62,8 @@ gctl_context_resolver_init(GctlContextResolver *self)
 {
 	self->config       = NULL;
 	self->forced_forge = GCTL_FORGE_TYPE_UNKNOWN;
+	self->forced_owner = NULL;
+	self->forced_repo  = NULL;
 }
 
 /* ── Internal helpers ─────────────────────────────────────────────── */
@@ -383,6 +392,20 @@ gctl_context_resolver_set_forced_forge(
 	self->forced_forge = forge_type;
 }
 
+void
+gctl_context_resolver_set_forced_repo(
+	GctlContextResolver  *self,
+	const gchar          *owner,
+	const gchar          *repo
+){
+	g_return_if_fail(GCTL_IS_CONTEXT_RESOLVER(self));
+
+	g_free(self->forced_owner);
+	g_free(self->forced_repo);
+	self->forced_owner = g_strdup(owner);
+	self->forced_repo  = g_strdup(repo);
+}
+
 GctlForgeContext *
 gctl_context_resolver_resolve(
 	GctlContextResolver  *self,
@@ -407,6 +430,18 @@ gctl_context_resolver_resolve(
 		/* Step 2: Parse host, owner, repo from the URL */
 		if (!parse_remote_url(url, &host, &owner, &repo, error))
 			return NULL;
+	}
+
+	/* Step 2.5: Override owner/repo if --repo was specified */
+	if (self->forced_owner != NULL)
+	{
+		g_free(owner);
+		owner = g_strdup(self->forced_owner);
+	}
+	if (self->forced_repo != NULL)
+	{
+		g_free(repo);
+		repo = g_strdup(self->forced_repo);
 	}
 
 	/* Step 3: Determine forge type */

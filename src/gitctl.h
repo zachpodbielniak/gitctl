@@ -51,6 +51,13 @@
 #include "commands/gitctl-cmd-api.h"
 #include "commands/gitctl-cmd-config.h"
 #include "commands/gitctl-cmd-completion.h"
+#include "commands/gitctl-cmd-status.h"
+#include "commands/gitctl-cmd-ci.h"
+#include "commands/gitctl-cmd-commit.h"
+#include "commands/gitctl-cmd-label.h"
+#include "commands/gitctl-cmd-notification.h"
+#include "commands/gitctl-cmd-key.h"
+#include "commands/gitctl-cmd-webhook.h"
 
 /* Module system */
 #include "module/gitctl-module.h"

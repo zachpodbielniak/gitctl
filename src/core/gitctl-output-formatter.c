@@ -141,11 +141,17 @@ get_columns_for_kind(
 	GctlResourceKind  kind,
 	guint            *n_cols
 ){
-	static const gchar *pr_cols[]      = { "#", "TITLE", "STATE", "AUTHOR", NULL };
-	static const gchar *issue_cols[]   = { "#", "TITLE", "STATE", "AUTHOR", NULL };
-	static const gchar *repo_cols[]    = { "NAME", "DESCRIPTION", "VISIBILITY", NULL };
-	static const gchar *release_cols[] = { "TAG", "TITLE", "DATE", NULL };
-	static const gchar *mirror_cols[]  = { "ID", "URL", "DIRECTION", "INTERVAL", NULL };
+	static const gchar *pr_cols[]           = { "#", "TITLE", "STATE", "AUTHOR", NULL };
+	static const gchar *issue_cols[]       = { "#", "TITLE", "STATE", "AUTHOR", NULL };
+	static const gchar *repo_cols[]        = { "NAME", "DESCRIPTION", "VISIBILITY", NULL };
+	static const gchar *release_cols[]     = { "TAG", "TITLE", "DATE", NULL };
+	static const gchar *mirror_cols[]      = { "ID", "URL", "DIRECTION", "INTERVAL", NULL };
+	static const gchar *ci_cols[]          = { "ID", "TITLE", "STATUS", "BRANCH", NULL };
+	static const gchar *commit_cols[]      = { "SHA", "MESSAGE", "AUTHOR", "DATE", NULL };
+	static const gchar *label_cols[]       = { "NAME", "COLOR", "DESCRIPTION", NULL };
+	static const gchar *notification_cols[] = { "ID", "TYPE", "TITLE", "REPO", NULL };
+	static const gchar *key_cols[]         = { "ID", "TITLE", "FINGERPRINT", NULL };
+	static const gchar *webhook_cols[]     = { "ID", "URL", "EVENTS", "ACTIVE", NULL };
 
 	switch (kind) {
 	case GCTL_RESOURCE_KIND_PR:
@@ -163,6 +169,24 @@ get_columns_for_kind(
 	case GCTL_RESOURCE_KIND_MIRROR:
 		*n_cols = 4;
 		return mirror_cols;
+	case GCTL_RESOURCE_KIND_CI:
+		*n_cols = 4;
+		return ci_cols;
+	case GCTL_RESOURCE_KIND_COMMIT:
+		*n_cols = 4;
+		return commit_cols;
+	case GCTL_RESOURCE_KIND_LABEL:
+		*n_cols = 3;
+		return label_cols;
+	case GCTL_RESOURCE_KIND_NOTIFICATION:
+		*n_cols = 4;
+		return notification_cols;
+	case GCTL_RESOURCE_KIND_KEY:
+		*n_cols = 3;
+		return key_cols;
+	case GCTL_RESOURCE_KIND_WEBHOOK:
+		*n_cols = 4;
+		return webhook_cols;
 	default:
 		*n_cols = 4;
 		return pr_cols;
@@ -257,6 +281,176 @@ get_resource_field(
 
 			interval = gctl_resource_get_extra(resource, "interval");
 			return interval ? interval : "";
+		}
+		}
+		break;
+
+	case GCTL_RESOURCE_KIND_CI:
+		switch (col) {
+		case 0: {
+			/* CI run ID from extra table or resource number */
+			const gchar *id;
+
+			id = gctl_resource_get_extra(resource, "run_id");
+			if (id != NULL)
+				return id;
+
+			/* Fall back to resource number */
+			if (gctl_resource_get_number(resource) >= 0) {
+				static _Thread_local gchar ci_buf[32];
+
+				g_snprintf(ci_buf, sizeof(ci_buf), "%d",
+				           gctl_resource_get_number(resource));
+				return ci_buf;
+			}
+			return "";
+		}
+		case 1: return gctl_resource_get_title(resource);
+		case 2: {
+			/* Status or conclusion from extra, or state */
+			const gchar *status;
+
+			status = gctl_resource_get_extra(resource, "status");
+			if (status != NULL)
+				return status;
+			return gctl_resource_get_state(resource)
+				? gctl_resource_get_state(resource) : "";
+		}
+		case 3: {
+			const gchar *branch;
+
+			branch = gctl_resource_get_extra(resource, "branch");
+			return branch ? branch : "";
+		}
+		}
+		break;
+
+	case GCTL_RESOURCE_KIND_COMMIT:
+		switch (col) {
+		case 0: {
+			const gchar *sha;
+
+			sha = gctl_resource_get_extra(resource, "sha");
+			return sha ? sha : "";
+		}
+		case 1: return gctl_resource_get_title(resource);
+		case 2: return gctl_resource_get_author(resource)
+			? gctl_resource_get_author(resource) : "";
+		case 3: return gctl_resource_get_created_at(resource)
+			? gctl_resource_get_created_at(resource) : "";
+		}
+		break;
+
+	case GCTL_RESOURCE_KIND_LABEL:
+		switch (col) {
+		case 0: return gctl_resource_get_title(resource);
+		case 1: {
+			const gchar *color;
+
+			color = gctl_resource_get_extra(resource, "color");
+			return color ? color : "";
+		}
+		case 2: {
+			const gchar *desc;
+
+			desc = gctl_resource_get_description(resource);
+			return desc ? desc : "";
+		}
+		}
+		break;
+
+	case GCTL_RESOURCE_KIND_NOTIFICATION:
+		switch (col) {
+		case 0: {
+			const gchar *id;
+
+			id = gctl_resource_get_extra(resource, "notification_id");
+			if (id != NULL)
+				return id;
+
+			if (gctl_resource_get_number(resource) >= 0) {
+				static _Thread_local gchar notif_buf[32];
+
+				g_snprintf(notif_buf, sizeof(notif_buf), "%d",
+				           gctl_resource_get_number(resource));
+				return notif_buf;
+			}
+			return "";
+		}
+		case 1: {
+			const gchar *type;
+
+			type = gctl_resource_get_extra(resource, "subject_type");
+			return type ? type : "";
+		}
+		case 2: return gctl_resource_get_title(resource);
+		case 3: {
+			const gchar *repo;
+
+			repo = gctl_resource_get_extra(resource, "repo");
+			return repo ? repo : "";
+		}
+		}
+		break;
+
+	case GCTL_RESOURCE_KIND_KEY:
+		switch (col) {
+		case 0: {
+			const gchar *id;
+
+			id = gctl_resource_get_extra(resource, "key_id");
+			if (id != NULL)
+				return id;
+
+			if (gctl_resource_get_number(resource) >= 0) {
+				static _Thread_local gchar key_buf[32];
+
+				g_snprintf(key_buf, sizeof(key_buf), "%d",
+				           gctl_resource_get_number(resource));
+				return key_buf;
+			}
+			return "";
+		}
+		case 1: return gctl_resource_get_title(resource);
+		case 2: {
+			const gchar *fp;
+
+			fp = gctl_resource_get_extra(resource, "fingerprint");
+			return fp ? fp : "";
+		}
+		}
+		break;
+
+	case GCTL_RESOURCE_KIND_WEBHOOK:
+		switch (col) {
+		case 0: {
+			const gchar *id;
+
+			id = gctl_resource_get_extra(resource, "webhook_id");
+			if (id != NULL)
+				return id;
+
+			if (gctl_resource_get_number(resource) >= 0) {
+				static _Thread_local gchar hook_buf[32];
+
+				g_snprintf(hook_buf, sizeof(hook_buf), "%d",
+				           gctl_resource_get_number(resource));
+				return hook_buf;
+			}
+			return "";
+		}
+		case 1: return gctl_resource_get_url(resource);
+		case 2: {
+			const gchar *events;
+
+			events = gctl_resource_get_extra(resource, "events");
+			return events ? events : "";
+		}
+		case 3: {
+			const gchar *active;
+
+			active = gctl_resource_get_extra(resource, "active");
+			return active ? active : "";
 		}
 		}
 		break;

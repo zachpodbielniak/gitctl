@@ -79,6 +79,25 @@ gctl_context_resolver_resolve(
 	GError              **error
 );
 
+/**
+ * gctl_context_resolver_set_forced_repo:
+ * @self: a #GctlContextResolver
+ * @owner: the repository owner
+ * @repo: the repository name
+ *
+ * Forces the resolver to use @owner and @repo instead of parsing
+ * them from the git remote URL.  The remote URL is still queried
+ * for hostname detection (unless a forced forge is also set).
+ *
+ * Pass %NULL for both to clear the override.
+ */
+void
+gctl_context_resolver_set_forced_repo(
+	GctlContextResolver  *self,
+	const gchar          *owner,
+	const gchar          *repo
+);
+
 G_END_DECLS
 
 #endif /* GCTL_CONTEXT_RESOLVER_H */

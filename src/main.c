@@ -34,6 +34,13 @@
 #include "commands/gitctl-cmd-api.h"
 #include "commands/gitctl-cmd-config.h"
 #include "commands/gitctl-cmd-completion.h"
+#include "commands/gitctl-cmd-status.h"
+#include "commands/gitctl-cmd-ci.h"
+#include "commands/gitctl-cmd-commit.h"
+#include "commands/gitctl-cmd-label.h"
+#include "commands/gitctl-cmd-notification.h"
+#include "commands/gitctl-cmd-key.h"
+#include "commands/gitctl-cmd-webhook.h"
 
 /* ===== License text ===== */
 
@@ -75,6 +82,7 @@ static gchar *opt_output = NULL;
 static gchar *opt_forge = NULL;
 static gchar *opt_remote = NULL;
 static gchar *opt_config = NULL;
+static gchar *opt_repo = NULL;
 
 static GOptionEntry global_entries[] = {
 	{
@@ -109,6 +117,10 @@ static GOptionEntry global_entries[] = {
 		"config", 'c', 0, G_OPTION_ARG_STRING, &opt_config,
 		"Configuration file path", "PATH"
 	},
+	{
+		"repo", 'R', 0, G_OPTION_ARG_STRING, &opt_repo,
+		"Override repository (owner/repo)", "OWNER/REPO"
+	},
 	{ NULL }
 };
 
@@ -129,6 +141,13 @@ static const GctlCommand commands[] = {
 	{ "api",     "Make raw API requests",      gctl_cmd_api     },
 	{ "config",  "Manage configuration",       gctl_cmd_config  },
 	{ "completion", "Generate shell completions", gctl_cmd_completion },
+	{ "status",       "Show repository overview",     gctl_cmd_status       },
+	{ "ci",           "Manage CI pipelines",          gctl_cmd_ci           },
+	{ "commit",       "View commits",                 gctl_cmd_commit       },
+	{ "label",        "Manage labels",                gctl_cmd_label        },
+	{ "notification", "Manage notifications",         gctl_cmd_notification },
+	{ "key",          "Manage SSH/deploy keys",       gctl_cmd_key          },
+	{ "webhook",      "Manage webhooks",              gctl_cmd_webhook      },
 	{ NULL, NULL, NULL }
 };
 
@@ -161,12 +180,14 @@ print_usage(void)
 	g_print("  -f, --forge TYPE        Force forge (github, gitlab, forgejo, gitea)\n");
 	g_print("  -r, --remote NAME       Git remote (default: origin)\n");
 	g_print("  -c, --config PATH       Config file path\n");
+	g_print("  -R, --repo OWNER/REPO   Override repository (owner/repo)\n");
 	g_print("\n");
 	g_print("Environment variables (overridden by CLI flags):\n");
 	g_print("  GITCTL_CONFIG               Configuration file path\n");
 	g_print("  GITCTL_FORGE                Force forge type\n");
 	g_print("  GITCTL_REMOTE               Git remote name\n");
 	g_print("  GITCTL_OUTPUT               Output format\n");
+	g_print("  GITCTL_REPO                 Override repository (owner/repo)\n");
 	g_print("\n");
 	g_print("Examples:\n");
 	g_print("  gitctl pr list                           List open pull requests\n");
@@ -243,6 +264,8 @@ main(
 		opt_remote = g_strdup(g_getenv("GITCTL_REMOTE"));
 	if (opt_output == NULL)
 		opt_output = g_strdup(g_getenv("GITCTL_OUTPUT"));
+	if (opt_repo == NULL)
+		opt_repo = g_strdup(g_getenv("GITCTL_REPO"));
 
 	/* Handle --version */
 	if (opt_version) {
@@ -330,6 +353,22 @@ main(
 
 		resolver = gctl_app_get_resolver(app);
 		gctl_context_resolver_set_forced_forge(resolver, forge_type);
+	}
+
+	/* If --repo was specified, override owner/repo on the resolver */
+	if (opt_repo) {
+		g_auto(GStrv) parts = g_strsplit(opt_repo, "/", 2);
+
+		if (g_strv_length(parts) == 2) {
+			GctlContextResolver *resolver;
+
+			resolver = gctl_app_get_resolver(app);
+			gctl_context_resolver_set_forced_repo(
+				resolver, parts[0], parts[1]);
+		} else {
+			g_printerr("Error: --repo must be in owner/repo format\n");
+			return 1;
+		}
 	}
 
 	/* Install signal handlers for graceful interruption */

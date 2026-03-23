@@ -19,6 +19,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <unistd.h>
 
 /* We need GCTL_COMPILATION so we can include internal headers directly */
 #ifndef GCTL_COMPILATION
@@ -207,6 +208,50 @@ static const GctlApiFallbackEntry api_fallbacks[] = {
 	  "POST", "/repos/{owner}/{repo}/push_mirrors-sync" },
 	{ GCTL_RESOURCE_KIND_MIRROR, GCTL_VERB_GET,
 	  "GET", "/repos/{owner}/{repo}/push_mirrors/{mirror_id}" },
+
+	/* CI operations */
+	{ GCTL_RESOURCE_KIND_CI, GCTL_VERB_LIST,
+	  "GET", "/repos/{owner}/{repo}/actions/runs" },
+	{ GCTL_RESOURCE_KIND_CI, GCTL_VERB_GET,
+	  "GET", "/repos/{owner}/{repo}/actions/runs/{number}" },
+
+	/* Label operations */
+	{ GCTL_RESOURCE_KIND_LABEL, GCTL_VERB_LIST,
+	  "GET", "/repos/{owner}/{repo}/labels" },
+	{ GCTL_RESOURCE_KIND_LABEL, GCTL_VERB_CREATE,
+	  "POST", "/repos/{owner}/{repo}/labels" },
+	{ GCTL_RESOURCE_KIND_LABEL, GCTL_VERB_DELETE,
+	  "DELETE", "/repos/{owner}/{repo}/labels/{number}" },
+
+	/* Notification operations */
+	{ GCTL_RESOURCE_KIND_NOTIFICATION, GCTL_VERB_LIST,
+	  "GET", "/notifications" },
+	{ GCTL_RESOURCE_KIND_NOTIFICATION, GCTL_VERB_READ,
+	  "PUT", "/notifications" },
+
+	/* Key operations */
+	{ GCTL_RESOURCE_KIND_KEY, GCTL_VERB_LIST,
+	  "GET", "/user/keys" },
+	{ GCTL_RESOURCE_KIND_KEY, GCTL_VERB_CREATE,
+	  "POST", "/user/keys" },
+	{ GCTL_RESOURCE_KIND_KEY, GCTL_VERB_DELETE,
+	  "DELETE", "/user/keys/{number}" },
+
+	/* Webhook operations */
+	{ GCTL_RESOURCE_KIND_WEBHOOK, GCTL_VERB_LIST,
+	  "GET", "/repos/{owner}/{repo}/hooks" },
+	{ GCTL_RESOURCE_KIND_WEBHOOK, GCTL_VERB_GET,
+	  "GET", "/repos/{owner}/{repo}/hooks/{number}" },
+	{ GCTL_RESOURCE_KIND_WEBHOOK, GCTL_VERB_CREATE,
+	  "POST", "/repos/{owner}/{repo}/hooks" },
+	{ GCTL_RESOURCE_KIND_WEBHOOK, GCTL_VERB_DELETE,
+	  "DELETE", "/repos/{owner}/{repo}/hooks/{number}" },
+
+	/* Repo star */
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_STAR,
+	  "PUT", "/user/starred/{owner}/{repo}" },
+	{ GCTL_RESOURCE_KIND_REPO, GCTL_VERB_UNSTAR,
+	  "DELETE", "/user/starred/{owner}/{repo}" },
 };
 
 static inline const GctlApiFallbackEntry *
@@ -263,6 +308,55 @@ gctl_cmd_expand_endpoint(
 }
 
 /**
+ * gctl_cmd_setup_pager:
+ *
+ * If stdout is a TTY, spawns the user's preferred pager (from the
+ * $PAGER environment variable, defaulting to "less -FRSX") and
+ * redirects our stdout into its stdin via dup2.  This mirrors the
+ * approach used by git itself.
+ *
+ * If stdout is not a TTY (e.g. piped to another process) or the
+ * pager cannot be spawned, this function is a no-op.
+ */
+static inline void
+gctl_cmd_setup_pager(void)
+{
+	const gchar *pager;
+	gint pager_stdin;
+	GPid pager_pid;
+	gchar *pager_argv[4];
+	GError *err = NULL;
+
+	if (!isatty(STDOUT_FILENO))
+		return;
+
+	pager = g_getenv("PAGER");
+	if (pager == NULL || *pager == '\0')
+		pager = "less -FRSX";
+
+	pager_argv[0] = (gchar *)"/bin/sh";
+	pager_argv[1] = (gchar *)"-c";
+	pager_argv[2] = (gchar *)pager;
+	pager_argv[3] = NULL;
+
+	if (!g_spawn_async_with_pipes(
+	        NULL, pager_argv, NULL,
+	        G_SPAWN_DO_NOT_REAP_CHILD,
+	        NULL, NULL,
+	        &pager_pid,
+	        &pager_stdin, NULL, NULL,
+	        &err))
+	{
+		g_clear_error(&err);
+		return;
+	}
+
+	/* Redirect our stdout into the pager's stdin */
+	dup2(pager_stdin, STDOUT_FILENO);
+	close(pager_stdin);
+}
+
+/**
  * gctl_cmd_execute_verb:
  * @app: the #GctlApp instance
  * @kind: the resource kind being operated on
@@ -316,6 +410,10 @@ gctl_cmd_execute_verb(
 		g_printerr("error: application not properly initialized\n");
 		return 1;
 	}
+
+	/* Set up a pager for LIST verbs when output goes to a TTY */
+	if (verb == GCTL_VERB_LIST)
+		gctl_cmd_setup_pager();
 
 	/* Step 2: Resolve forge context from git remote */
 	default_remote = gctl_config_get_default_remote(config);

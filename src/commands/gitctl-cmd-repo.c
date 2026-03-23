@@ -30,6 +30,8 @@ static const GctlVerbEntry repo_verbs[] = {
 	{ "clone",  "Clone a repository",               GCTL_VERB_CLONE  },
 	{ "delete", "Delete a repository",              GCTL_VERB_DELETE },
 	{ "browse", "Open the repository in browser",   GCTL_VERB_BROWSE },
+	{ "star",   "Star a repository",               GCTL_VERB_STAR   },
+	{ "unstar", "Remove star from repository",     GCTL_VERB_UNSTAR },
 };
 
 static const gsize N_REPO_VERBS = G_N_ELEMENTS(repo_verbs);
@@ -861,6 +863,67 @@ cmd_repo_browse(
 	                             GCTL_VERB_BROWSE, NULL, params);
 }
 
+/* ── repo star ───────────────────────────────────────────────────────── */
+
+/**
+ * cmd_repo_star:
+ * @app: the #GctlApp instance
+ * @argc: remaining argument count after verb
+ * @argv: remaining argument vector after verb
+ *
+ * Handles "gitctl repo star [owner/repo]".  Stars the specified
+ * repository, or the current repository if no argument is given.
+ *
+ * Returns: 0 on success, 1 on error
+ */
+static gint
+cmd_repo_star(
+	GctlApp  *app,
+	gint      argc,
+	gchar   **argv
+){
+	g_autoptr(GHashTable) params = NULL;
+	const gchar *owner_repo;
+
+	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	owner_repo = (argc >= 2) ? argv[1] : NULL;
+
+	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
+	                             GCTL_VERB_STAR, owner_repo, params);
+}
+
+/* ── repo unstar ─────────────────────────────────────────────────────── */
+
+/**
+ * cmd_repo_unstar:
+ * @app: the #GctlApp instance
+ * @argc: remaining argument count after verb
+ * @argv: remaining argument vector after verb
+ *
+ * Handles "gitctl repo unstar [owner/repo]".  Removes the star from
+ * the specified repository, or the current repository if no argument
+ * is given.
+ *
+ * Returns: 0 on success, 1 on error
+ */
+static gint
+cmd_repo_unstar(
+	GctlApp  *app,
+	gint      argc,
+	gchar   **argv
+){
+	g_autoptr(GHashTable) params = NULL;
+	const gchar *owner_repo;
+
+	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	owner_repo = (argc >= 2) ? argv[1] : NULL;
+
+	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
+	                             GCTL_VERB_UNSTAR, owner_repo, params);
+}
+
 /* ── Main entry point ────────────────────────────────────────────────── */
 
 /**
@@ -925,6 +988,10 @@ gctl_cmd_repo(
 			return cmd_repo_delete(app, argc, argv);
 		case GCTL_VERB_BROWSE:
 			return cmd_repo_browse(app, argc, argv);
+		case GCTL_VERB_STAR:
+			return cmd_repo_star(app, argc, argv);
+		case GCTL_VERB_UNSTAR:
+			return cmd_repo_unstar(app, argc, argv);
 		default:
 			g_printerr("error: verb '%s' not implemented for repo\n",
 			           verb_name);

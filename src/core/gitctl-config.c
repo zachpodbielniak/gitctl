@@ -609,6 +609,57 @@ gctl_config_set_default_remote(
 	self->default_remote = g_strdup(remote);
 }
 
+/**
+ * gctl_config_set_default_output_format:
+ * @self: a #GctlConfig
+ * @format: the new default output format
+ *
+ * Overrides the default output format.
+ */
+void
+gctl_config_set_default_output_format(
+	GctlConfig       *self,
+	GctlOutputFormat  format
+){
+	g_return_if_fail(GCTL_IS_CONFIG(self));
+
+	self->default_output_format = format;
+}
+
+/**
+ * gctl_config_set_default_forge:
+ * @self: a #GctlConfig
+ * @forge_type: the new default forge type
+ *
+ * Overrides the default forge type.
+ */
+void
+gctl_config_set_default_forge(
+	GctlConfig    *self,
+	GctlForgeType  forge_type
+){
+	g_return_if_fail(GCTL_IS_CONFIG(self));
+
+	self->default_forge = forge_type;
+}
+
+/**
+ * gctl_config_get_config_path:
+ * @self: a #GctlConfig
+ *
+ * Returns the path to the configuration file that was loaded, or
+ * %NULL if no file has been loaded yet.
+ *
+ * Returns: (transfer none) (nullable): the config file path
+ */
+const gchar *
+gctl_config_get_config_path(GctlConfig *self)
+{
+	g_return_val_if_fail(GCTL_IS_CONFIG(self), NULL);
+
+	return self->config_path;
+}
+
 const gchar *
 gctl_config_get_alias(
 	GctlConfig   *self,

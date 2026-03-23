@@ -65,6 +65,12 @@ GType gctl_output_format_get_type (void) G_GNUC_CONST;
  * @GCTL_RESOURCE_KIND_REPO: Repository.
  * @GCTL_RESOURCE_KIND_RELEASE: Release.
  * @GCTL_RESOURCE_KIND_MIRROR: Repository mirror (push or pull).
+ * @GCTL_RESOURCE_KIND_CI: CI pipeline / workflow run.
+ * @GCTL_RESOURCE_KIND_COMMIT: Git commit.
+ * @GCTL_RESOURCE_KIND_LABEL: Issue/PR label.
+ * @GCTL_RESOURCE_KIND_NOTIFICATION: Forge notification.
+ * @GCTL_RESOURCE_KIND_KEY: SSH or deploy key.
+ * @GCTL_RESOURCE_KIND_WEBHOOK: Repository webhook.
  *
  * The type of forge resource being operated on.
  */
@@ -75,6 +81,12 @@ typedef enum
     GCTL_RESOURCE_KIND_REPO,
     GCTL_RESOURCE_KIND_RELEASE,
     GCTL_RESOURCE_KIND_MIRROR,
+    GCTL_RESOURCE_KIND_CI,
+    GCTL_RESOURCE_KIND_COMMIT,
+    GCTL_RESOURCE_KIND_LABEL,
+    GCTL_RESOURCE_KIND_NOTIFICATION,
+    GCTL_RESOURCE_KIND_KEY,
+    GCTL_RESOURCE_KIND_WEBHOOK,
 } GctlResourceKind;
 
 GType gctl_resource_kind_get_type (void) G_GNUC_CONST;
@@ -97,6 +109,11 @@ GType gctl_resource_kind_get_type (void) G_GNUC_CONST;
  * @GCTL_VERB_CLONE: Clone a repository.
  * @GCTL_VERB_BROWSE: Open resource in web browser.
  * @GCTL_VERB_SYNC: Trigger mirror synchronization.
+ * @GCTL_VERB_DIFF: View diff of a pull request.
+ * @GCTL_VERB_LOG: View logs (CI pipeline output).
+ * @GCTL_VERB_READ: Mark a notification as read.
+ * @GCTL_VERB_STAR: Star/favourite a repository.
+ * @GCTL_VERB_UNSTAR: Remove star from a repository.
  *
  * The action to perform on a forge resource.
  */
@@ -117,6 +134,11 @@ typedef enum
     GCTL_VERB_CLONE,
     GCTL_VERB_BROWSE,
     GCTL_VERB_SYNC,
+    GCTL_VERB_DIFF,
+    GCTL_VERB_LOG,
+    GCTL_VERB_READ,
+    GCTL_VERB_STAR,
+    GCTL_VERB_UNSTAR,
 } GctlVerb;
 
 GType gctl_verb_get_type (void) G_GNUC_CONST;

@@ -407,6 +407,14 @@ build_pulls_argv(
 		}
 		break;
 
+	case GCTL_VERB_DIFF:
+		/*
+		 * tea does not have a dedicated diff subcommand for pulls.
+		 * Return unsupported so the API fallback is used.
+		 */
+		set_unsupported(error, GCTL_RESOURCE_KIND_PR, verb);
+		return NULL;
+
 	default:
 		set_unsupported(error, GCTL_RESOURCE_KIND_PR, verb);
 		return NULL;
@@ -862,6 +870,212 @@ build_mirror_argv(
 	return NULL;
 }
 
+/* ── build_argv: CI operations ─────────────────────────────────────── */
+
+/**
+ * build_ci_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * The tea CLI has no CI / Actions support.  All verbs return
+ * unsupported to trigger the API fallback.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_ci_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_CI, verb);
+	return NULL;
+}
+
+/* ── build_argv: Commit operations ────────────────────────────────── */
+
+/**
+ * build_commit_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Commit operations use local git directly.  All verbs return
+ * unsupported.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_commit_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_COMMIT, verb);
+	return NULL;
+}
+
+/* ── build_argv: Label operations ─────────────────────────────────── */
+
+/**
+ * build_labels_argv:
+ * @verb: the action to perform on the label
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * Builds tea CLI argv for label operations.  Uses `tea labels`
+ * (plural) subcommands.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_labels_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	g_autoptr(GPtrArray) argv = NULL;
+	const gchar *val = NULL;
+
+	argv = g_ptr_array_new_with_free_func(g_free);
+	g_ptr_array_add(argv, g_strdup("tea"));
+	g_ptr_array_add(argv, g_strdup("labels"));
+
+	switch (verb) {
+	case GCTL_VERB_LIST:
+		g_ptr_array_add(argv, g_strdup("list"));
+
+		g_ptr_array_add(argv, g_strdup("-o"));
+		g_ptr_array_add(argv, g_strdup("json"));
+		break;
+
+	case GCTL_VERB_CREATE:
+		g_ptr_array_add(argv, g_strdup("create"));
+
+		val = get_param(params, "name");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--name"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "color");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--color"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "description");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--description"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+		break;
+
+	case GCTL_VERB_DELETE:
+		g_ptr_array_add(argv, g_strdup("delete"));
+
+		val = get_param(params, "number");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+		break;
+
+	default:
+		set_unsupported(error, GCTL_RESOURCE_KIND_LABEL, verb);
+		return NULL;
+	}
+
+	g_ptr_array_add(argv, NULL);
+	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
+}
+
+/* ── build_argv: Notification operations ──────────────────────────── */
+
+/**
+ * build_notification_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * The tea CLI has no notification support.  All verbs return
+ * unsupported to trigger the API fallback.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_notification_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_NOTIFICATION, verb);
+	return NULL;
+}
+
+/* ── build_argv: Key operations ───────────────────────────────────── */
+
+/**
+ * build_key_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * The tea CLI has no SSH key management support.  All verbs return
+ * unsupported to trigger the API fallback.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_key_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_KEY, verb);
+	return NULL;
+}
+
+/* ── build_argv: Webhook operations ───────────────────────────────── */
+
+/**
+ * build_webhook_argv:
+ * @verb: the action to perform
+ * @context: the forge context
+ * @params: operation parameters
+ * @error: return location for errors
+ *
+ * The tea CLI has no webhook management support.  All verbs return
+ * unsupported to trigger the API fallback.
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
+ */
+static gchar **
+build_webhook_argv(
+	GctlVerb            verb,
+	GctlForgeContext   *context,
+	GHashTable         *params,
+	GError            **error
+)
+{
+	set_unsupported(error, GCTL_RESOURCE_KIND_WEBHOOK, verb);
+	return NULL;
+}
+
 /* ── build_argv: dispatch ─────────────────────────────────────────── */
 
 static gchar **
@@ -889,6 +1103,24 @@ gitea_forge_build_argv(
 
 	case GCTL_RESOURCE_KIND_MIRROR:
 		return build_mirror_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_CI:
+		return build_ci_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_COMMIT:
+		return build_commit_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_LABEL:
+		return build_labels_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_NOTIFICATION:
+		return build_notification_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_KEY:
+		return build_key_argv(verb, context, params, error);
+
+	case GCTL_RESOURCE_KIND_WEBHOOK:
+		return build_webhook_argv(verb, context, params, error);
 
 	default:
 		g_set_error(
