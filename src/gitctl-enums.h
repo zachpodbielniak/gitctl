@@ -114,6 +114,7 @@ GType gctl_resource_kind_get_type (void) G_GNUC_CONST;
  * @GCTL_VERB_READ: Mark a notification as read.
  * @GCTL_VERB_STAR: Star/favourite a repository.
  * @GCTL_VERB_UNSTAR: Remove star from a repository.
+ * @GCTL_VERB_MIGRATE: Migrate a repository to another forge.
  *
  * The action to perform on a forge resource.
  */
@@ -139,6 +140,7 @@ typedef enum
     GCTL_VERB_READ,
     GCTL_VERB_STAR,
     GCTL_VERB_UNSTAR,
+    GCTL_VERB_MIGRATE,
 } GctlVerb;
 
 GType gctl_verb_get_type (void) G_GNUC_CONST;

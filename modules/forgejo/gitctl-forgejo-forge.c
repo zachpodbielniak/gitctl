@@ -612,6 +612,39 @@ build_repo_argv(
 		g_ptr_array_add(argv, g_strdup("--web"));
 		break;
 
+	case GCTL_VERB_MIGRATE:
+		/* Build: fj repo migrate <source-url> <name> [flags] */
+		g_ptr_array_add(argv, g_strdup("migrate"));
+
+		val = get_param(params, "source_url");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+
+		val = get_param(params, "name");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+
+		val = get_param(params, "mirror");
+		if (val != NULL && g_strcmp0(val, "true") == 0)
+			g_ptr_array_add(argv, g_strdup("--mirror"));
+
+		val = get_param(params, "private");
+		if (val != NULL && g_strcmp0(val, "true") == 0)
+			g_ptr_array_add(argv, g_strdup("--private"));
+
+		val = get_param(params, "include");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--include"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "service");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--service"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+		break;
+
 	default:
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
 		return NULL;

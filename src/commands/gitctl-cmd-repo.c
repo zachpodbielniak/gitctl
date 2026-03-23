@@ -7,7 +7,7 @@
  * gitctl-cmd-repo.c - Repository command handler
  *
  * Implements the "repo" command with verb dispatch for: list, get,
- * create, fork, clone, delete, and browse.
+ * create, fork, clone, delete, browse, star, unstar, and migrate.
  *
  * All verbs parse their options and delegate to gctl_cmd_execute_verb().
  */
@@ -31,7 +31,8 @@ static const GctlVerbEntry repo_verbs[] = {
 	{ "delete", "Delete a repository",              GCTL_VERB_DELETE },
 	{ "browse", "Open the repository in browser",   GCTL_VERB_BROWSE },
 	{ "star",   "Star a repository",               GCTL_VERB_STAR   },
-	{ "unstar", "Remove star from repository",     GCTL_VERB_UNSTAR },
+	{ "unstar",   "Remove star from repository",     GCTL_VERB_UNSTAR  },
+	{ "migrate",  "Migrate a repository to another forge", GCTL_VERB_MIGRATE },
 };
 
 static const gsize N_REPO_VERBS = G_N_ELEMENTS(repo_verbs);
@@ -924,6 +925,524 @@ cmd_repo_unstar(
 	                             GCTL_VERB_UNSTAR, owner_repo, params);
 }
 
+/* ── repo migrate ────────────────────────────────────────────────────── */
+
+/* Static option variables for the migrate verb */
+static gchar *opt_migrate_to_forge = NULL;
+static gchar *opt_migrate_name = NULL;
+static gboolean opt_migrate_private = FALSE;
+static gchar *opt_migrate_include = NULL;
+static gchar *opt_migrate_service = NULL;
+static gchar *opt_migrate_token_src = NULL;
+static gboolean opt_migrate_mirror = FALSE;
+static gboolean opt_migrate_mirror_back = FALSE;
+static gchar **opt_migrate_mirror_to = NULL;
+
+/**
+ * infer_service_from_forge:
+ * @forge_type: the #GctlForgeType of the source forge
+ *
+ * Maps a forge type to the service name expected by migration CLIs
+ * (e.g. forgejo/gitea --service flag).
+ *
+ * Returns: (transfer none): the service string, or "git" as fallback
+ */
+static const gchar *
+infer_service_from_forge(GctlForgeType forge_type)
+{
+	switch (forge_type)
+	{
+		case GCTL_FORGE_TYPE_GITHUB:  return "github";
+		case GCTL_FORGE_TYPE_GITLAB:  return "gitlab";
+		case GCTL_FORGE_TYPE_FORGEJO: return "forgejo";
+		case GCTL_FORGE_TYPE_GITEA:   return "gitea";
+		default:                      return "git";
+	}
+}
+
+/**
+ * cmd_repo_migrate:
+ * @app: the #GctlApp instance
+ * @argc: remaining argument count after verb
+ * @argv: remaining argument vector after verb
+ *
+ * Handles "gitctl repo migrate <source-url> --to <forge> [options]".
+ *
+ * Migrates a repository from one forge to another.  For forges that
+ * support native migration (Forgejo, Gitea), the forge CLI's migrate
+ * command is invoked directly.  For forges without native migrate
+ * support (GitHub, GitLab), a fallback creates a blank repo and
+ * prints instructions for manual mirror setup.
+ *
+ * Optionally sets up push mirrors back to the source (--mirror-back)
+ * and to additional destinations (--mirror-to).
+ *
+ * Returns: 0 on success, 1 on error
+ */
+static gint
+cmd_repo_migrate(
+	GctlApp  *app,
+	gint      argc,
+	gchar   **argv
+){
+	g_autoptr(GOptionContext) opt_context = NULL;
+	g_autoptr(GHashTable) params = NULL;
+	g_autoptr(GError) error = NULL;
+	GctlConfig *config;
+	GctlExecutor *executor;
+	GctlModuleManager *mm;
+	GctlForgeType dest_forge_type;
+	GctlForgeType source_forge_type;
+	GctlForge *dest_forge;
+	const gchar *source_url;
+	const gchar *dest_host;
+	const gchar *dest_cli;
+	g_autofree gchar *repo_name = NULL;
+	g_autofree gchar *source_host = NULL;
+	g_autofree gchar *source_owner = NULL;
+	g_autofree gchar *source_repo = NULL;
+	g_autofree gchar *inferred_service = NULL;
+	gboolean verbose;
+	gint ret;
+
+	/* Reset statics for safety */
+	opt_migrate_to_forge = NULL;
+	opt_migrate_name = NULL;
+	opt_migrate_private = FALSE;
+	opt_migrate_include = NULL;
+	opt_migrate_service = NULL;
+	opt_migrate_token_src = NULL;
+	opt_migrate_mirror = FALSE;
+	opt_migrate_mirror_back = FALSE;
+	opt_migrate_mirror_to = NULL;
+
+	GOptionEntry entries[] = {
+		{ "to", 't', 0, G_OPTION_ARG_STRING, &opt_migrate_to_forge,
+		  "Destination forge type (github, gitlab, forgejo, gitea)",
+		  "FORGE" },
+		{ "name", 'n', 0, G_OPTION_ARG_STRING, &opt_migrate_name,
+		  "Repository name on destination (default: source repo name)",
+		  "NAME" },
+		{ "private", 'p', 0, G_OPTION_ARG_NONE, &opt_migrate_private,
+		  "Create as private repository", NULL },
+		{ "include", 'i', 0, G_OPTION_ARG_STRING, &opt_migrate_include,
+		  "Items to include: all, or comma-separated list "
+		  "(lfs,wiki,issues,prs,milestones,labels,releases)", "ITEMS" },
+		{ "service", 's', 0, G_OPTION_ARG_STRING, &opt_migrate_service,
+		  "Source service type (git, github, gitlab, forgejo, gitea)",
+		  "TYPE" },
+		{ "token", 0, 0, G_OPTION_ARG_STRING, &opt_migrate_token_src,
+		  "Authentication token for accessing the source repository",
+		  "TOKEN" },
+		{ "mirror", 'm', 0, G_OPTION_ARG_NONE, &opt_migrate_mirror,
+		  "Create as a mirror (pull mirror) instead of a one-time "
+		  "migration", NULL },
+		{ "mirror-back", 0, 0, G_OPTION_ARG_NONE,
+		  &opt_migrate_mirror_back,
+		  "Set up push mirror from destination back to source after "
+		  "migration", NULL },
+		{ "mirror-to", 0, 0, G_OPTION_ARG_STRING_ARRAY,
+		  &opt_migrate_mirror_to,
+		  "Set up push mirror to this URL after migration (repeatable)",
+		  "URL" },
+		{ "token-github", 0, 0, G_OPTION_ARG_STRING, &opt_token_github,
+		  "GitHub token for mirror destination", "TOKEN" },
+		{ "token-gitlab", 0, 0, G_OPTION_ARG_STRING, &opt_token_gitlab,
+		  "GitLab token for mirror destination", "TOKEN" },
+		{ "token-forgejo", 0, 0, G_OPTION_ARG_STRING, &opt_token_forgejo,
+		  "Forgejo token for mirror destination", "TOKEN" },
+		{ "token-gitea", 0, 0, G_OPTION_ARG_STRING, &opt_token_gitea,
+		  "Gitea token for mirror destination", "TOKEN" },
+		{ NULL }
+	};
+
+	opt_context = g_option_context_new(
+	    "<source-url> --to <forge> - migrate a repository");
+	g_option_context_add_main_entries(opt_context, entries, NULL);
+
+	if (!g_option_context_parse(opt_context, &argc, &argv, &error))
+	{
+		g_printerr("error: %s\n", error->message);
+		ret = 1;
+		goto cleanup;
+	}
+
+	/* Validate required arguments */
+	if (argc < 2)
+	{
+		g_printerr("error: source repository URL required\n");
+		g_printerr("Usage: gitctl repo migrate <source-url> "
+		           "--to <forge> [options]\n");
+		ret = 1;
+		goto cleanup;
+	}
+
+	if (opt_migrate_to_forge == NULL)
+	{
+		g_printerr("error: --to <forge> is required\n");
+		g_printerr("Usage: gitctl repo migrate <source-url> "
+		           "--to <forge> [options]\n");
+		ret = 1;
+		goto cleanup;
+	}
+
+	source_url = argv[1];
+	config = gctl_app_get_config(app);
+	executor = gctl_app_get_executor(app);
+	mm = gctl_app_get_module_manager(app);
+	verbose = gctl_app_get_verbose(app);
+
+	/* Determine destination forge type */
+	dest_forge_type = gctl_forge_type_from_string(opt_migrate_to_forge);
+	if (dest_forge_type == GCTL_FORGE_TYPE_UNKNOWN)
+	{
+		g_printerr("error: unknown forge type '%s'\n",
+		           opt_migrate_to_forge);
+		g_printerr("Supported: github, gitlab, forgejo, gitea\n");
+		ret = 1;
+		goto cleanup;
+	}
+
+	/* Find the destination forge module */
+	dest_forge = gctl_module_manager_find_forge(mm, dest_forge_type);
+	if (dest_forge == NULL)
+	{
+		g_printerr("error: no module available for %s\n",
+		           gctl_forge_type_to_string(dest_forge_type));
+		ret = 1;
+		goto cleanup;
+	}
+
+	/* Parse the source URL to extract host, owner, repo name */
+	if (!repo_parse_mirror_url(source_url, &source_host,
+	                           &source_owner, &source_repo))
+	{
+		g_printerr("error: could not parse source URL '%s'\n",
+		           source_url);
+		ret = 1;
+		goto cleanup;
+	}
+
+	/* Determine the repository name on the destination */
+	if (opt_migrate_name != NULL)
+		repo_name = g_strdup(opt_migrate_name);
+	else
+		repo_name = g_strdup(source_repo);
+
+	if (repo_name == NULL || repo_name[0] == '\0')
+	{
+		g_printerr("error: could not determine repository name; "
+		           "use --name to specify it\n");
+		ret = 1;
+		goto cleanup;
+	}
+
+	/* Detect source forge type from the hostname in config */
+	source_forge_type = gctl_config_get_forge_for_host(config,
+	                                                   source_host);
+
+	/* Infer --service from source forge type if not provided */
+	if (opt_migrate_service == NULL && source_forge_type !=
+	    GCTL_FORGE_TYPE_UNKNOWN)
+	{
+		inferred_service = g_strdup(
+		    infer_service_from_forge(source_forge_type));
+	}
+
+	/* Get destination host and CLI path from config */
+	dest_host = gctl_config_get_default_host(config, dest_forge_type);
+	dest_cli = gctl_config_get_cli_path(config, dest_forge_type);
+
+	if (verbose)
+	{
+		g_printerr("note: migrating %s -> %s (repo: %s)\n",
+		           source_url,
+		           gctl_forge_type_to_string(dest_forge_type),
+		           repo_name);
+		g_printerr("note: source forge: %s, service: %s\n",
+		           gctl_forge_type_to_string(source_forge_type),
+		           opt_migrate_service != NULL
+		               ? opt_migrate_service
+		               : (inferred_service != NULL
+		                   ? inferred_service : "(auto)"));
+	}
+
+	/* Build params hash for the forge module */
+	params = g_hash_table_new_full(g_str_hash, g_str_equal,
+	                               g_free, g_free);
+	g_hash_table_insert(params, g_strdup("source_url"),
+	                    g_strdup(source_url));
+	g_hash_table_insert(params, g_strdup("name"),
+	                    g_strdup(repo_name));
+
+	if (opt_migrate_private)
+		g_hash_table_insert(params, g_strdup("private"),
+		                    g_strdup("true"));
+
+	if (opt_migrate_mirror)
+		g_hash_table_insert(params, g_strdup("mirror"),
+		                    g_strdup("true"));
+
+	if (opt_migrate_include != NULL)
+		g_hash_table_insert(params, g_strdup("include"),
+		                    g_strdup(opt_migrate_include));
+
+	if (opt_migrate_service != NULL)
+		g_hash_table_insert(params, g_strdup("service"),
+		                    g_strdup(opt_migrate_service));
+	else if (inferred_service != NULL)
+		g_hash_table_insert(params, g_strdup("service"),
+		                    g_strdup(inferred_service));
+
+	if (opt_migrate_token_src != NULL)
+		g_hash_table_insert(params, g_strdup("source_token"),
+		                    g_strdup(opt_migrate_token_src));
+
+	/*
+	 * Build the destination forge context for the newly created repo.
+	 * We extract the owner from the source URL's owner by default.
+	 * For forges like Forgejo/Gitea the CLI will use the authenticated
+	 * user if no owner is specified.
+	 */
+	{
+		g_autoptr(GctlForgeContext) dest_context = NULL;
+		g_autoptr(GctlCommandResult) migrate_result = NULL;
+		g_autoptr(GError) build_err = NULL;
+		gchar **migrate_argv;
+
+		dest_context = gctl_forge_context_new(
+		    dest_forge_type,
+		    NULL,           /* remote_url: not yet known */
+		    source_owner,   /* owner: reuse source owner as default */
+		    repo_name,
+		    dest_host,
+		    dest_cli);
+
+		/* Try the forge's native migrate command */
+		migrate_argv = gctl_forge_build_argv(
+		    dest_forge, GCTL_RESOURCE_KIND_REPO,
+		    GCTL_VERB_MIGRATE, dest_context,
+		    params, &build_err);
+
+		if (migrate_argv == NULL &&
+		    build_err != NULL &&
+		    build_err->domain == GCTL_ERROR &&
+		    build_err->code == GCTL_ERROR_FORGE_UNSUPPORTED)
+		{
+			/*
+			 * Fallback for forges without native migrate:
+			 * Create a blank repo, then instruct the user to set
+			 * up mirroring manually or use git clone + push.
+			 */
+			g_autoptr(GHashTable) create_params = NULL;
+			g_autoptr(GError) create_err = NULL;
+			g_autoptr(GctlCommandResult) create_result = NULL;
+			gchar **create_argv;
+
+			g_printerr("note: %s does not support native migration; "
+			           "creating blank repo and using clone+push\n",
+			           gctl_forge_type_to_string(dest_forge_type));
+
+			create_params = g_hash_table_new_full(
+			    g_str_hash, g_str_equal, g_free, g_free);
+			g_hash_table_insert(create_params, g_strdup("name"),
+			                    g_strdup(repo_name));
+			if (opt_migrate_private)
+				g_hash_table_insert(create_params,
+				                    g_strdup("private"),
+				                    g_strdup("true"));
+
+			create_argv = gctl_forge_build_argv(
+			    dest_forge, GCTL_RESOURCE_KIND_REPO,
+			    GCTL_VERB_CREATE, dest_context,
+			    create_params, &create_err);
+
+			if (create_argv == NULL)
+			{
+				g_printerr("error: could not build repo create "
+				           "command for %s: %s\n",
+				           gctl_forge_type_to_string(
+				               dest_forge_type),
+				           create_err ? create_err->message
+				                      : "unknown error");
+				ret = 1;
+				goto cleanup;
+			}
+
+			create_result = gctl_executor_run(
+			    executor,
+			    (const gchar * const *)create_argv,
+			    &create_err);
+			g_strfreev(create_argv);
+
+			if (create_result == NULL ||
+			    gctl_command_result_get_exit_code(
+			        create_result) != 0)
+			{
+				const gchar *stderr_text = NULL;
+				if (create_result != NULL)
+					stderr_text =
+					    gctl_command_result_get_stderr(
+					        create_result);
+				g_printerr("error: failed to create repo on "
+				           "%s",
+				           gctl_forge_type_to_string(
+				               dest_forge_type));
+				if (stderr_text != NULL &&
+				    stderr_text[0] != '\0')
+					g_printerr(": %s", stderr_text);
+				g_printerr("\n");
+				ret = 1;
+				goto cleanup;
+			}
+
+			/*
+			 * Now clone from source and push to destination.
+			 * Build: git clone --bare <source-url> /tmp/repo.git
+			 *        cd /tmp/repo.git
+			 *        git push --mirror <dest-url>
+			 *
+			 * For simplicity in a first pass, print instructions
+			 * for the user to finish the migration manually.
+			 */
+			g_printerr("note: blank repo created on %s. To "
+			           "complete migration, run:\n",
+			           gctl_forge_type_to_string(
+			               dest_forge_type));
+			g_printerr("  git clone --bare %s /tmp/%s.git\n",
+			           source_url, repo_name);
+			g_printerr("  cd /tmp/%s.git\n", repo_name);
+			g_printerr("  git push --mirror <dest-remote-url>\n");
+			g_printerr("  rm -rf /tmp/%s.git\n", repo_name);
+
+			ret = 0;
+		}
+		else if (migrate_argv == NULL)
+		{
+			g_printerr("error: failed to build migrate command: "
+			           "%s\n",
+			           build_err ? build_err->message
+			                     : "unknown error");
+			ret = 1;
+			goto cleanup;
+		}
+		else
+		{
+			/* Execute the native migrate command */
+			migrate_result = gctl_executor_run(
+			    executor,
+			    (const gchar * const *)migrate_argv,
+			    &error);
+			g_strfreev(migrate_argv);
+
+			if (migrate_result == NULL ||
+			    gctl_command_result_get_exit_code(
+			        migrate_result) != 0)
+			{
+				const gchar *stderr_text = NULL;
+				if (migrate_result != NULL)
+					stderr_text =
+					    gctl_command_result_get_stderr(
+					        migrate_result);
+				g_printerr("error: migration failed");
+				if (stderr_text != NULL &&
+				    stderr_text[0] != '\0')
+					g_printerr(": %s", stderr_text);
+				g_printerr("\n");
+				ret = 1;
+				goto cleanup;
+			}
+
+			if (verbose)
+				g_printerr("note: migration to %s completed "
+				           "successfully\n",
+				           gctl_forge_type_to_string(
+				               dest_forge_type));
+
+			ret = 0;
+		}
+
+		/*
+		 * Post-migrate: set up push mirror from destination back
+		 * to the source (--mirror-back)
+		 */
+		if (ret == 0 && opt_migrate_mirror_back)
+		{
+			g_autoptr(GctlForgeContext) new_dest_context = NULL;
+
+			if (verbose)
+				g_printerr("note: setting up push mirror "
+				           "back to source %s\n",
+				           source_url);
+
+			new_dest_context = gctl_forge_context_new(
+			    dest_forge_type,
+			    NULL,
+			    source_owner,
+			    repo_name,
+			    dest_host,
+			    dest_cli);
+
+			setup_mirror_to(app, source_url, new_dest_context);
+		}
+
+		/*
+		 * Post-migrate: set up push mirrors to additional
+		 * destinations (--mirror-to)
+		 */
+		if (ret == 0 && opt_migrate_mirror_to != NULL)
+		{
+			g_autoptr(GctlForgeContext) new_dest_context = NULL;
+			gint m;
+
+			new_dest_context = gctl_forge_context_new(
+			    dest_forge_type,
+			    NULL,
+			    source_owner,
+			    repo_name,
+			    dest_host,
+			    dest_cli);
+
+			for (m = 0; opt_migrate_mirror_to[m] != NULL; m++)
+			{
+				if (verbose)
+					g_printerr("note: setting up push "
+					           "mirror to %s\n",
+					           opt_migrate_mirror_to[m]);
+
+				setup_mirror_to(app,
+				                opt_migrate_mirror_to[m],
+				                new_dest_context);
+			}
+		}
+	}
+
+cleanup:
+	g_free(opt_migrate_to_forge);
+	g_free(opt_migrate_name);
+	g_free(opt_migrate_include);
+	g_free(opt_migrate_service);
+	g_free(opt_migrate_token_src);
+	g_strfreev(opt_migrate_mirror_to);
+	g_free(opt_token_github);
+	g_free(opt_token_gitlab);
+	g_free(opt_token_forgejo);
+	g_free(opt_token_gitea);
+
+	opt_migrate_to_forge = NULL;
+	opt_migrate_name = NULL;
+	opt_migrate_include = NULL;
+	opt_migrate_service = NULL;
+	opt_migrate_token_src = NULL;
+	opt_migrate_mirror_to = NULL;
+	opt_token_github = NULL;
+	opt_token_gitlab = NULL;
+	opt_token_forgejo = NULL;
+	opt_token_gitea = NULL;
+
+	return ret;
+}
+
 /* ── Main entry point ────────────────────────────────────────────────── */
 
 /**
@@ -992,6 +1511,8 @@ gctl_cmd_repo(
 			return cmd_repo_star(app, argc, argv);
 		case GCTL_VERB_UNSTAR:
 			return cmd_repo_unstar(app, argc, argv);
+		case GCTL_VERB_MIGRATE:
+			return cmd_repo_migrate(app, argc, argv);
 		default:
 			g_printerr("error: verb '%s' not implemented for repo\n",
 			           verb_name);

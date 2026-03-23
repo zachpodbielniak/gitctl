@@ -158,6 +158,7 @@ static const GEnumValue gctl_verb_values[] = {
     { GCTL_VERB_READ,     "GCTL_VERB_READ",     "read"     },
     { GCTL_VERB_STAR,     "GCTL_VERB_STAR",     "star"     },
     { GCTL_VERB_UNSTAR,   "GCTL_VERB_UNSTAR",   "unstar"   },
+    { GCTL_VERB_MIGRATE,  "GCTL_VERB_MIGRATE",  "migrate"  },
     { 0, NULL, NULL }
 };
 
@@ -200,6 +201,7 @@ gctl_verb_to_string(GctlVerb verb)
     case GCTL_VERB_READ:     return "read";
     case GCTL_VERB_STAR:     return "star";
     case GCTL_VERB_UNSTAR:   return "unstar";
+    case GCTL_VERB_MIGRATE:  return "migrate";
     default:                 return "unknown";
     }
 }

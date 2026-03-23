@@ -724,6 +724,68 @@ build_repos_argv(
 		g_ptr_array_add(argv, g_strdup("--web"));
 		break;
 
+	case GCTL_VERB_MIGRATE:
+		/*
+		 * tea uses "repos migrate" for migration.  Reset the argv
+		 * array since tea uses "repos" not "repo" as the noun.
+		 */
+		g_ptr_array_set_size(argv, 0);
+		g_ptr_array_add(argv, g_strdup("tea"));
+		g_ptr_array_add(argv, g_strdup("repos"));
+		g_ptr_array_add(argv, g_strdup("migrate"));
+
+		val = get_param(params, "source_url");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--clone-url"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "name");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--name"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		/* tea uses individual flags instead of --include */
+		val = get_param(params, "include");
+		if (val != NULL) {
+			if (strstr(val, "all") != NULL || strstr(val, "wiki") != NULL)
+				g_ptr_array_add(argv, g_strdup("--wiki"));
+			if (strstr(val, "all") != NULL || strstr(val, "issues") != NULL)
+				g_ptr_array_add(argv, g_strdup("--issues"));
+			if (strstr(val, "all") != NULL || strstr(val, "prs") != NULL)
+				g_ptr_array_add(argv, g_strdup("--pull-requests"));
+			if (strstr(val, "all") != NULL || strstr(val, "releases") != NULL)
+				g_ptr_array_add(argv, g_strdup("--releases"));
+			if (strstr(val, "all") != NULL || strstr(val, "milestones") != NULL)
+				g_ptr_array_add(argv, g_strdup("--milestones"));
+			if (strstr(val, "all") != NULL || strstr(val, "labels") != NULL)
+				g_ptr_array_add(argv, g_strdup("--labels"));
+			if (strstr(val, "all") != NULL || strstr(val, "lfs") != NULL)
+				g_ptr_array_add(argv, g_strdup("--lfs"));
+		}
+
+		val = get_param(params, "mirror");
+		if (val != NULL && g_strcmp0(val, "true") == 0)
+			g_ptr_array_add(argv, g_strdup("--mirror"));
+
+		val = get_param(params, "private");
+		if (val != NULL && g_strcmp0(val, "true") == 0)
+			g_ptr_array_add(argv, g_strdup("--private"));
+
+		val = get_param(params, "service");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--service"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "source_token");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--auth-token"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+		break;
+
 	default:
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
 		return NULL;

@@ -754,6 +754,11 @@ build_repo_argv(
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
 		return NULL;
 
+	case GCTL_VERB_MIGRATE:
+		/* glab has no native migrate command — unsupported */
+		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+		return NULL;
+
 	default:
 		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
 		return NULL;
