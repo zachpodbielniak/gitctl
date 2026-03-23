@@ -553,7 +553,8 @@ setup_mirror_to(
 			g_printerr("note: adding push mirror: POST %s\n", endpoint);
 
 		mirror_argv = gctl_forge_build_api_argv(
-		    source_forge, "POST", endpoint, body, &mirror_err);
+		    source_forge, "POST", endpoint, body,
+		    source_context, &mirror_err);
 
 		if (mirror_argv == NULL)
 		{

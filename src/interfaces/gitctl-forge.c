@@ -220,6 +220,7 @@ gctl_forge_parse_get_output(
  * @method: the HTTP method (e.g. "GET", "POST")
  * @endpoint: the API endpoint path
  * @body: (nullable): optional JSON request body, or %NULL
+ * @context: (transfer none) (nullable): the forge context (owner, repo, host, etc.)
  * @error: (nullable): return location for a #GError, or %NULL
  *
  * Builds a NULL-terminated argument vector for a raw API passthrough
@@ -233,11 +234,12 @@ gctl_forge_parse_get_output(
  */
 gchar **
 gctl_forge_build_api_argv(
-	GctlForge    *self,
-	const gchar  *method,
-	const gchar  *endpoint,
-	const gchar  *body,
-	GError      **error
+	GctlForge          *self,
+	const gchar        *method,
+	const gchar        *endpoint,
+	const gchar        *body,
+	GctlForgeContext   *context,
+	GError            **error
 ){
 	GctlForgeInterface *iface;
 
@@ -258,5 +260,5 @@ gctl_forge_build_api_argv(
 		return NULL;
 	}
 
-	return iface->build_api_argv(self, method, endpoint, body, error);
+	return iface->build_api_argv(self, method, endpoint, body, context, error);
 }

@@ -63,7 +63,7 @@ static GctlResource *gitea_forge_parse_get_output(
 
 static gchar **gitea_forge_build_api_argv(
 	GctlForge *self, const gchar *method, const gchar *endpoint,
-	const gchar *body, GError **error);
+	const gchar *body, GctlForgeContext *context, GError **error);
 
 /* ── GctlModule overrides ─────────────────────────────────────────── */
 
@@ -1251,6 +1251,7 @@ gitea_forge_parse_get_output(
  * @method: the HTTP method
  * @endpoint: the API endpoint path
  * @body: (nullable): optional JSON request body
+ * @context: (transfer none) (nullable): the forge context
  * @error: (nullable): return location for errors
  *
  * Builds argv for `tea api <endpoint> -X <method>`.
@@ -1259,11 +1260,12 @@ gitea_forge_parse_get_output(
  */
 static gchar **
 gitea_forge_build_api_argv(
-	GctlForge    *self,
-	const gchar  *method,
-	const gchar  *endpoint,
-	const gchar  *body,
-	GError      **error
+	GctlForge          *self,
+	const gchar        *method,
+	const gchar        *endpoint,
+	const gchar        *body,
+	GctlForgeContext   *context,
+	GError            **error
 )
 {
 	g_autoptr(GPtrArray) argv = NULL;

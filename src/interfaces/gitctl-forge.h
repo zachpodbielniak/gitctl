@@ -81,11 +81,12 @@ struct _GctlForgeInterface
 	                                         GError            **error);
 
 	/* API passthrough — build argv for raw API call */
-	gchar           **(*build_api_argv)     (GctlForge    *self,
-	                                         const gchar  *method,
-	                                         const gchar  *endpoint,
-	                                         const gchar  *body,
-	                                         GError      **error);
+	gchar           **(*build_api_argv)     (GctlForge          *self,
+	                                         const gchar        *method,
+	                                         const gchar        *endpoint,
+	                                         const gchar        *body,
+	                                         GctlForgeContext   *context,
+	                                         GError            **error);
 
 	/*< private >*/
 	gpointer padding[8];
@@ -230,6 +231,7 @@ gctl_forge_parse_get_output(
  * @method: the HTTP method (e.g. "GET", "POST")
  * @endpoint: the API endpoint path
  * @body: (nullable): optional JSON request body, or %NULL
+ * @context: (transfer none) (nullable): the forge context (owner, repo, host, etc.)
  * @error: (nullable): return location for a #GError, or %NULL
  *
  * Builds a NULL-terminated argument vector for a raw API passthrough
@@ -243,11 +245,12 @@ gctl_forge_parse_get_output(
  */
 gchar **
 gctl_forge_build_api_argv(
-	GctlForge    *self,
-	const gchar  *method,
-	const gchar  *endpoint,
-	const gchar  *body,
-	GError      **error
+	GctlForge          *self,
+	const gchar        *method,
+	const gchar        *endpoint,
+	const gchar        *body,
+	GctlForgeContext   *context,
+	GError            **error
 );
 
 G_END_DECLS

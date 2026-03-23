@@ -127,6 +127,22 @@ gctl_config_get_forge_for_host(
 );
 
 /**
+ * gctl_config_get_default_host:
+ * @self: a #GctlConfig
+ * @forge_type: the #GctlForgeType to look up
+ *
+ * Returns the first (primary) hostname configured for @forge_type.
+ * Useful for API calls when no git remote context is available.
+ *
+ * Returns: (transfer none) (nullable): the hostname, or %NULL
+ */
+const gchar *
+gctl_config_get_default_host(
+	GctlConfig   *self,
+	GctlForgeType forge_type
+);
+
+/**
  * gctl_config_get_cli_path:
  * @self: a #GctlConfig
  * @forge_type: the #GctlForgeType to look up

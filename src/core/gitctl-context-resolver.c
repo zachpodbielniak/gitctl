@@ -415,12 +415,20 @@ gctl_context_resolver_resolve(
 
 		/*
 		 * When the forge is forced and the remote URL couldn't be
-		 * resolved, clear the error — we can still proceed for
-		 * operations that don't need owner/repo context (e.g.
-		 * repo list, repo create).
+		 * resolved, clear the error and use the config's default
+		 * host for this forge type.  This enables operations that
+		 * don't need owner/repo context (e.g. repo list, repo
+		 * create) to work outside of a git repository.
 		 */
-		if (url == NULL)
+		if (url == NULL) {
+			const gchar *default_host;
+
 			g_clear_error(error);
+			default_host = gctl_config_get_default_host(
+				self->config, forge_type);
+			if (default_host != NULL)
+				host = g_strdup(default_host);
+		}
 	} else {
 		if (url == NULL)
 			return NULL;

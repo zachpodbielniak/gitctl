@@ -203,7 +203,7 @@ gctl_cmd_api(
 
 	/* Build the API argv */
 	api_argv = gctl_forge_build_api_argv(forge, method, endpoint,
-	                                     body, &error);
+	                                     body, context, &error);
 	g_free(body);
 
 	if (api_argv == NULL)

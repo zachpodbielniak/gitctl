@@ -407,7 +407,8 @@ gctl_cmd_execute_verb(
 				           fallback->method, endpoint);
 
 			argv = gctl_forge_build_api_argv(
-			    forge, fallback->method, endpoint, body_str, &error);
+			    forge, fallback->method, endpoint, body_str,
+			    context, &error);
 
 			if (argv != NULL)
 				used_api_fallback = TRUE;

@@ -493,6 +493,26 @@ gctl_config_get_forge_for_host(
 }
 
 const gchar *
+gctl_config_get_default_host(
+	GctlConfig   *self,
+	GctlForgeType forge_type
+){
+	GHashTableIter iter;
+	gpointer key;
+	gpointer value;
+
+	g_return_val_if_fail(GCTL_IS_CONFIG(self), NULL);
+
+	g_hash_table_iter_init(&iter, self->forge_hosts);
+	while (g_hash_table_iter_next(&iter, &key, &value)) {
+		if ((GctlForgeType)GPOINTER_TO_INT(value) == forge_type)
+			return (const gchar *)key;
+	}
+
+	return NULL;
+}
+
+const gchar *
 gctl_config_get_cli_path(
 	GctlConfig   *self,
 	GctlForgeType forge_type

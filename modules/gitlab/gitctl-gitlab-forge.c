@@ -67,7 +67,7 @@ static GctlResource *gitlab_forge_parse_get_output(
 
 static gchar **gitlab_forge_build_api_argv(
 	GctlForge *self, const gchar *method, const gchar *endpoint,
-	const gchar *body, GError **error);
+	const gchar *body, GctlForgeContext *context, GError **error);
 
 /* ── GctlModule overrides ─────────────────────────────────────────── */
 
@@ -1353,6 +1353,7 @@ gitlab_forge_parse_get_output(
  * @method: the HTTP method
  * @endpoint: the API endpoint path
  * @body: (nullable): optional JSON request body
+ * @context: (transfer none) (nullable): the forge context
  * @error: (nullable): return location for errors
  *
  * Builds argv for `glab api <endpoint> -X <method>`.
@@ -1361,11 +1362,12 @@ gitlab_forge_parse_get_output(
  */
 static gchar **
 gitlab_forge_build_api_argv(
-	GctlForge    *self,
-	const gchar  *method,
-	const gchar  *endpoint,
-	const gchar  *body,
-	GError      **error
+	GctlForge          *self,
+	const gchar        *method,
+	const gchar        *endpoint,
+	const gchar        *body,
+	GctlForgeContext   *context,
+	GError            **error
 )
 {
 	g_autoptr(GPtrArray) argv = NULL;

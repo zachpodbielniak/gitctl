@@ -85,11 +85,12 @@ github_forge_parse_get_output(
 
 static gchar **
 github_forge_build_api_argv(
-	GctlForge    *self,
-	const gchar  *method,
-	const gchar  *endpoint,
-	const gchar  *body,
-	GError      **error
+	GctlForge          *self,
+	const gchar        *method,
+	const gchar        *endpoint,
+	const gchar        *body,
+	GctlForgeContext   *context,
+	GError            **error
 );
 
 /* ── GctlModule virtual method overrides ──────────────────────────── */
@@ -1422,6 +1423,7 @@ github_forge_parse_get_output(
  * @method: the HTTP method (e.g. "GET", "POST")
  * @endpoint: the API endpoint path
  * @body: (nullable): optional JSON request body
+ * @context: (transfer none) (nullable): the forge context
  * @error: (nullable): return location for a #GError
  *
  * Builds argv for `gh api <endpoint> -X <method>`.  If @body is
@@ -1432,11 +1434,12 @@ github_forge_parse_get_output(
  */
 static gchar **
 github_forge_build_api_argv(
-	GctlForge    *self,
-	const gchar  *method,
-	const gchar  *endpoint,
-	const gchar  *body,
-	GError      **error
+	GctlForge          *self,
+	const gchar        *method,
+	const gchar        *endpoint,
+	const gchar        *body,
+	GctlForgeContext   *context,
+	GError            **error
 )
 {
 	g_autoptr(GPtrArray) argv = NULL;

@@ -63,7 +63,7 @@ static GctlResource *forgejo_forge_parse_get_output(
 
 static gchar **forgejo_forge_build_api_argv(
 	GctlForge *self, const gchar *method, const gchar *endpoint,
-	const gchar *body, GError **error);
+	const gchar *body, GctlForgeContext *context, GError **error);
 
 /* ── GctlModule overrides ─────────────────────────────────────────── */
 
@@ -252,33 +252,10 @@ build_pr_argv(
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
-		/* fj uses "search" instead of "list" for PRs */
-		g_ptr_array_add(argv, g_strdup("search"));
-
-		val = get_param(params, "state");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--state"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		val = get_param(params, "limit");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--limit"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
-
 	case GCTL_VERB_GET:
-		g_ptr_array_add(argv, g_strdup("view"));
-
-		val = get_param(params, "number");
-		if (val != NULL)
-			g_ptr_array_add(argv, g_strdup(val));
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
+		/* fj has no JSON output — fall through to API */
+		set_unsupported(error, GCTL_RESOURCE_KIND_PR, verb);
+		return NULL;
 
 	case GCTL_VERB_CREATE:
 		g_ptr_array_add(argv, g_strdup("create"));
@@ -434,33 +411,10 @@ build_issue_argv(
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
-		/* fj uses "search" instead of "list" for issues */
-		g_ptr_array_add(argv, g_strdup("search"));
-
-		val = get_param(params, "state");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--state"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		val = get_param(params, "limit");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--limit"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
-
 	case GCTL_VERB_GET:
-		g_ptr_array_add(argv, g_strdup("view"));
-
-		val = get_param(params, "number");
-		if (val != NULL)
-			g_ptr_array_add(argv, g_strdup(val));
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
+		/* fj has no JSON output — fall through to API */
+		set_unsupported(error, GCTL_RESOURCE_KIND_ISSUE, verb);
+		return NULL;
 
 	case GCTL_VERB_CREATE:
 		g_ptr_array_add(argv, g_strdup("create"));
@@ -577,31 +531,14 @@ build_repo_argv(
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
-		g_ptr_array_add(argv, g_strdup("search"));
-
-		val = get_param(params, "limit");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--limit"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
+		/* fj has no 'repo list' or 'repo search' — fall through to API */
+		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+		return NULL;
 
 	case GCTL_VERB_GET:
-		g_ptr_array_add(argv, g_strdup("view"));
-
-		val = get_param(params, "repo");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup(val));
-		} else if (context != NULL && context->owner != NULL) {
-			g_autofree gchar *slug = NULL;
-			slug = gctl_forge_context_get_owner_repo(context);
-			g_ptr_array_add(argv, g_strdup(slug));
-		}
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
+		/* fj repo view has no --json flag — fall through to API */
+		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+		return NULL;
 
 	case GCTL_VERB_CREATE:
 		g_ptr_array_add(argv, g_strdup("create"));
@@ -706,26 +643,10 @@ build_release_argv(
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
-		g_ptr_array_add(argv, g_strdup("list"));
-
-		val = get_param(params, "limit");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--limit"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
-
 	case GCTL_VERB_GET:
-		g_ptr_array_add(argv, g_strdup("view"));
-
-		val = get_param(params, "tag");
-		if (val != NULL)
-			g_ptr_array_add(argv, g_strdup(val));
-
-		g_ptr_array_add(argv, g_strdup("--json"));
-		break;
+		/* fj has no JSON output — fall through to API */
+		set_unsupported(error, GCTL_RESOURCE_KIND_RELEASE, verb);
+		return NULL;
 
 	case GCTL_VERB_CREATE:
 		g_ptr_array_add(argv, g_strdup("create"));
@@ -1213,36 +1134,76 @@ forgejo_forge_parse_get_output(
  * @method: the HTTP method
  * @endpoint: the API endpoint path
  * @body: (nullable): optional JSON request body
+ * @context: (transfer none) (nullable): the forge context (provides host URL)
  * @error: (nullable): return location for errors
  *
- * Builds argv for `fj api <method> <endpoint>`.  The fj CLI takes
- * the HTTP method as a positional argument rather than a flag.
+ * Builds argv for a curl-based API call to the Forgejo REST API.
+ * The Forgejo CLI (`fj`) does not have an `api` subcommand, so we
+ * use `curl` directly.  The full URL is built from the host in
+ * @context as `https://<host>/api/v1<endpoint>`.
+ *
+ * Authentication is provided via the FORGEJO_TOKEN or GITEA_TOKEN
+ * environment variable when available.
  *
  * Returns: (transfer full) (array zero-terminated=1) (nullable): argv
  */
 static gchar **
 forgejo_forge_build_api_argv(
-	GctlForge    *self,
-	const gchar  *method,
-	const gchar  *endpoint,
-	const gchar  *body,
-	GError      **error
+	GctlForge          *self,
+	const gchar        *method,
+	const gchar        *endpoint,
+	const gchar        *body,
+	GctlForgeContext   *context,
+	GError            **error
 )
 {
 	g_autoptr(GPtrArray) argv = NULL;
+	const gchar *host;
+	g_autofree gchar *full_url = NULL;
 
 	argv = g_ptr_array_new_with_free_func(g_free);
-	g_ptr_array_add(argv, g_strdup("fj"));
-	g_ptr_array_add(argv, g_strdup("api"));
+	g_ptr_array_add(argv, g_strdup("curl"));
+	g_ptr_array_add(argv, g_strdup("-s"));        /* silent */
+	g_ptr_array_add(argv, g_strdup("-S"));        /* show errors */
 
-	/* fj takes method as a positional arg, not a flag */
+	/* HTTP method */
+	g_ptr_array_add(argv, g_strdup("-X"));
 	g_ptr_array_add(argv, g_strdup(method));
-	g_ptr_array_add(argv, g_strdup(endpoint));
 
-	if (body != NULL && *body != '\0') {
-		g_ptr_array_add(argv, g_strdup("-f"));
-		g_ptr_array_add(argv, g_strdup_printf("body=%s", body));
+	/* Accept JSON response */
+	g_ptr_array_add(argv, g_strdup("-H"));
+	g_ptr_array_add(argv, g_strdup("Accept: application/json"));
+
+	/* Auth token from environment */
+	{
+		const gchar *token;
+
+		token = g_getenv("FORGEJO_TOKEN");
+		if (token == NULL)
+			token = g_getenv("GITEA_TOKEN");  /* Forgejo is Gitea-compatible */
+		if (token != NULL) {
+			g_ptr_array_add(argv, g_strdup("-H"));
+			g_ptr_array_add(argv, g_strdup_printf("Authorization: token %s", token));
+		}
 	}
+
+	/* JSON body if provided */
+	if (body != NULL && *body != '\0') {
+		g_ptr_array_add(argv, g_strdup("-H"));
+		g_ptr_array_add(argv, g_strdup("Content-Type: application/json"));
+		g_ptr_array_add(argv, g_strdup("-d"));
+		g_ptr_array_add(argv, g_strdup(body));
+	}
+
+	/* Build full URL: https://<host>/api/v1<endpoint> */
+	host = (context != NULL) ? gctl_forge_context_get_host(context) : NULL;
+	if (host != NULL) {
+		full_url = g_strdup_printf("https://%s/api/v1%s", host, endpoint);
+	} else {
+		/* Fallback: assume endpoint is already a full URL */
+		full_url = g_strdup(endpoint);
+	}
+	g_ptr_array_add(argv, g_strdup(full_url));
 
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
