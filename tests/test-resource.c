@@ -8,6 +8,8 @@
 #define GCTL_COMPILATION
 #include <gitctl.h>
 
+/* ── Original tests ───────────────────────────────────────────────── */
+
 /* test_resource_new: create a resource, verify kind */
 static void
 test_resource_new(void)
@@ -330,6 +332,142 @@ test_resource_all_kinds(void)
 	}
 }
 
+/* ── New tests ────────────────────────────────────────────────────── */
+
+/*
+ * test_resource_copy_independence: verify deep copy is fully
+ * independent by mutating original after copy and checking
+ * that the copy is unaffected across all fields including extras
+ */
+static void
+test_resource_copy_independence(void)
+{
+	GctlResource *orig;
+	GctlResource *copy;
+
+	orig = gctl_resource_new(GCTL_RESOURCE_KIND_PR);
+	gctl_resource_set_number(orig, 100);
+	gctl_resource_set_title(orig, "original");
+	gctl_resource_set_state(orig, "open");
+	gctl_resource_set_author(orig, "alice");
+	gctl_resource_set_url(orig, "https://example.com/pr/100");
+	gctl_resource_set_description(orig, "original description");
+	gctl_resource_set_created_at(orig, "2026-01-01");
+	gctl_resource_set_updated_at(orig, "2026-01-02");
+	gctl_resource_set_extra(orig, "key1", "val1");
+	gctl_resource_set_extra(orig, "key2", "val2");
+
+	copy = gctl_resource_copy(orig);
+
+	/* Mutate every field on the original */
+	gctl_resource_set_number(orig, 999);
+	gctl_resource_set_title(orig, "modified");
+	gctl_resource_set_state(orig, "closed");
+	gctl_resource_set_author(orig, "bob");
+	gctl_resource_set_url(orig, "https://example.com/pr/999");
+	gctl_resource_set_description(orig, "modified description");
+	gctl_resource_set_created_at(orig, "2026-12-31");
+	gctl_resource_set_updated_at(orig, "2026-12-31");
+	gctl_resource_set_extra(orig, "key1", "changed");
+	gctl_resource_set_extra(orig, "key2", NULL);
+	gctl_resource_set_extra(orig, "key3", "new");
+
+	/* Verify copy retains original values */
+	g_assert_cmpint(gctl_resource_get_number(copy), ==, 100);
+	g_assert_cmpstr(gctl_resource_get_title(copy), ==, "original");
+	g_assert_cmpstr(gctl_resource_get_state(copy), ==, "open");
+	g_assert_cmpstr(gctl_resource_get_author(copy), ==, "alice");
+	g_assert_cmpstr(gctl_resource_get_url(copy), ==, "https://example.com/pr/100");
+	g_assert_cmpstr(gctl_resource_get_description(copy), ==, "original description");
+	g_assert_cmpstr(gctl_resource_get_created_at(copy), ==, "2026-01-01");
+	g_assert_cmpstr(gctl_resource_get_updated_at(copy), ==, "2026-01-02");
+	g_assert_cmpstr(gctl_resource_get_extra(copy, "key1"), ==, "val1");
+	g_assert_cmpstr(gctl_resource_get_extra(copy, "key2"), ==, "val2");
+	g_assert_null(gctl_resource_get_extra(copy, "key3"));
+
+	gctl_resource_free(orig);
+	gctl_resource_free(copy);
+}
+
+/*
+ * test_resource_extra_table: verify get_extra_table returns the
+ * internal hash table and allows direct inspection
+ */
+static void
+test_resource_extra_table(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+	GHashTable *table;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_WEBHOOK);
+
+	gctl_resource_set_extra(res, "events", "push");
+	gctl_resource_set_extra(res, "active", "true");
+
+	table = gctl_resource_get_extra_table(res);
+	g_assert_nonnull(table);
+	g_assert_cmpuint(g_hash_table_size(table), ==, 2);
+	g_assert_cmpstr(
+		(const gchar *)g_hash_table_lookup(table, "events"),
+		==, "push");
+	g_assert_cmpstr(
+		(const gchar *)g_hash_table_lookup(table, "active"),
+		==, "true");
+}
+
+/*
+ * test_resource_copy_empty_extras: verify copying a resource with
+ * no extras set does not crash and produces an empty extras table
+ */
+static void
+test_resource_copy_empty_extras(void)
+{
+	g_autoptr(GctlResource) orig = NULL;
+	g_autoptr(GctlResource) copy = NULL;
+	GHashTable *table;
+
+	orig = gctl_resource_new(GCTL_RESOURCE_KIND_LABEL);
+	gctl_resource_set_title(orig, "enhancement");
+
+	copy = gctl_resource_copy(orig);
+	g_assert_nonnull(copy);
+	g_assert_cmpstr(gctl_resource_get_title(copy), ==, "enhancement");
+
+	table = gctl_resource_get_extra_table(copy);
+	g_assert_nonnull(table);
+	g_assert_cmpuint(g_hash_table_size(table), ==, 0);
+}
+
+/*
+ * test_resource_many_extras: verify the extras table handles many
+ * entries correctly
+ */
+static void
+test_resource_many_extras(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+	GHashTable *table;
+	guint i;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_CI);
+
+	/* Insert 100 extra keys */
+	for (i = 0; i < 100; i++) {
+		g_autofree gchar *key = g_strdup_printf("key_%u", i);
+		g_autofree gchar *val = g_strdup_printf("val_%u", i);
+
+		gctl_resource_set_extra(res, key, val);
+	}
+
+	table = gctl_resource_get_extra_table(res);
+	g_assert_cmpuint(g_hash_table_size(table), ==, 100);
+
+	/* Spot-check a few */
+	g_assert_cmpstr(gctl_resource_get_extra(res, "key_0"), ==, "val_0");
+	g_assert_cmpstr(gctl_resource_get_extra(res, "key_50"), ==, "val_50");
+	g_assert_cmpstr(gctl_resource_get_extra(res, "key_99"), ==, "val_99");
+}
+
 int
 main(
 	int     argc,
@@ -337,6 +475,7 @@ main(
 ){
 	g_test_init(&argc, &argv, NULL);
 
+	/* Original tests */
 	g_test_add_func("/resource/new", test_resource_new);
 	g_test_add_func("/resource/set-get-title", test_resource_set_get_title);
 	g_test_add_func("/resource/set-get-number", test_resource_set_get_number);
@@ -352,6 +491,12 @@ main(
 	g_test_add_func("/resource/extra-null-value", test_resource_extra_null_value);
 	g_test_add_func("/resource/copy-with-extra", test_resource_copy_with_extra);
 	g_test_add_func("/resource/all-kinds", test_resource_all_kinds);
+
+	/* New tests */
+	g_test_add_func("/resource/copy-independence", test_resource_copy_independence);
+	g_test_add_func("/resource/extra-table", test_resource_extra_table);
+	g_test_add_func("/resource/copy-empty-extras", test_resource_copy_empty_extras);
+	g_test_add_func("/resource/many-extras", test_resource_many_extras);
 
 	return g_test_run();
 }
