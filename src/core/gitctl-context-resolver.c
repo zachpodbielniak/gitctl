@@ -458,20 +458,24 @@ gctl_context_resolver_resolve(
 		forge_type = self->forced_forge;
 
 		/*
-		 * When the forge is forced and the remote URL couldn't be
-		 * resolved, clear the error and use the config's default
-		 * host for this forge type.  This enables operations that
-		 * don't need owner/repo context (e.g. repo list, repo
-		 * create) to work outside of a git repository.
+		 * When the forge is forced, always use the config's default
+		 * host for that forge type.  The git remote may point to a
+		 * different forge (e.g. origin is on GitLab but the user
+		 * said --forge forgejo).  If there's no URL at all, also
+		 * clear any pending error.
 		 */
-		if (url == NULL) {
+		{
 			const gchar *default_host;
 
-			g_clear_error(error);
+			if (url == NULL)
+				g_clear_error(error);
+
 			default_host = gctl_config_get_default_host(
 				self->config, forge_type);
-			if (default_host != NULL)
+			if (default_host != NULL) {
+				g_free(host);
 				host = g_strdup(default_host);
+			}
 		}
 	} else {
 		if (url == NULL)
