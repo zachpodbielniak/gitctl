@@ -213,13 +213,14 @@ get_resource_field(
 		case 1: {
 			const gchar *desc;
 
-			desc = gctl_resource_get_extra(resource, "description");
+			desc = gctl_resource_get_description(resource);
 			return desc ? desc : "";
 		}
 		case 2: {
 			const gchar *vis;
 
-			vis = gctl_resource_get_extra(resource, "visibility");
+			/* Visibility is stored in state by the parsers */
+			vis = gctl_resource_get_state(resource);
 			return vis ? vis : "";
 		}
 		}
