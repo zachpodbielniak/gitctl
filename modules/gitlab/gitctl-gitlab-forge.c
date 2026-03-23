@@ -755,32 +755,66 @@ build_repo_argv(
 		return NULL;
 
 	case GCTL_VERB_EDIT:
-		/* If visibility change requested, use API (glab doesn't support it) */
-		val = get_param(params, "visibility");
-		if (val != NULL) {
-			set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
-			return NULL;
+		/*
+		 * Use glab api to edit project settings.  This handles all
+		 * params (visibility, description, etc.) via the GitLab
+		 * Projects API.  glab api resolves :id from the local repo.
+		 */
+		{
+			GHashTableIter piter;
+			gpointer k;
+			gpointer v;
+			g_autoptr(GString) body = NULL;
+			gboolean first = TRUE;
+
+			body = g_string_new("{");
+
+			if (params != NULL) {
+				g_hash_table_iter_init(&piter, params);
+				while (g_hash_table_iter_next(&piter, &k, &v)) {
+					const gchar *pkey = (const gchar *)k;
+					const gchar *pval = (const gchar *)v;
+
+					if (g_strcmp0(pkey, "number") == 0 ||
+					    g_strcmp0(pkey, "mirror_id") == 0)
+						continue;
+
+					if (!first)
+						g_string_append_c(body, ',');
+					first = FALSE;
+
+					/* Map to GitLab API field names */
+					if (g_strcmp0(pkey, "enable_issues") == 0)
+						pkey = "issues_enabled";
+					else if (g_strcmp0(pkey, "enable_wiki") == 0)
+						pkey = "wiki_enabled";
+					else if (g_strcmp0(pkey, "enable_projects") == 0)
+						pkey = "builds_enabled";
+					else if (g_strcmp0(pkey, "archive") == 0)
+						pkey = "archived";
+
+					if (g_strcmp0(pval, "true") == 0 ||
+					    g_strcmp0(pval, "false") == 0)
+						g_string_append_printf(body,
+							"\"%s\":%s", pkey, pval);
+					else
+						g_string_append_printf(body,
+							"\"%s\":\"%s\"", pkey, pval);
+				}
+			}
+
+			g_string_append_c(body, '}');
+
+			g_ptr_array_set_size(argv, 0);
+			g_ptr_array_add(argv, g_strdup("glab"));
+			g_ptr_array_add(argv, g_strdup("api"));
+			g_ptr_array_add(argv, g_strdup("/projects/:id"));
+			g_ptr_array_add(argv, g_strdup("-X"));
+			g_ptr_array_add(argv, g_strdup("PUT"));
+			g_ptr_array_add(argv, g_strdup("-f"));
+			g_ptr_array_add(argv, g_strdup_printf(
+				"body=%s", body->str));
 		}
-
-		/* glab uses "update" instead of "edit" */
-		g_ptr_array_add(argv, g_strdup("update"));
-
-		val = get_param(params, "description");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--description"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		val = get_param(params, "default_branch");
-		if (val != NULL) {
-			g_ptr_array_add(argv, g_strdup("--defaultBranch"));
-			g_ptr_array_add(argv, g_strdup(val));
-		}
-
-		val = get_param(params, "archive");
-		if (val != NULL && g_strcmp0(val, "true") == 0)
-			g_ptr_array_add(argv, g_strdup("--archive"));
-
 		break;
 
 	case GCTL_VERB_MIGRATE:
