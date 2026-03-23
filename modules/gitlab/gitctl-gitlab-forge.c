@@ -808,12 +808,71 @@ build_repo_argv(
 			g_ptr_array_set_size(argv, 0);
 			g_ptr_array_add(argv, g_strdup("glab"));
 			g_ptr_array_add(argv, g_strdup("api"));
-			g_ptr_array_add(argv, g_strdup("/projects/:id"));
+
+			/*
+			 * Use URL-encoded owner%2Frepo path instead of :id
+			 * so this works even when the local repo doesn't
+			 * have a GitLab remote (e.g. --forge gitlab -R ...).
+			 */
+			{
+				const gchar *own;
+				const gchar *rname;
+
+				own = (context != NULL)
+					? gctl_forge_context_get_owner(context)
+					: NULL;
+				rname = (context != NULL)
+					? gctl_forge_context_get_repo_name(context)
+					: NULL;
+
+				if (own != NULL && rname != NULL)
+					g_ptr_array_add(argv, g_strdup_printf(
+						"/projects/%s%%2F%s",
+						own, rname));
+				else
+					g_ptr_array_add(argv,
+						g_strdup("/projects/:id"));
+			}
+
 			g_ptr_array_add(argv, g_strdup("-X"));
 			g_ptr_array_add(argv, g_strdup("PUT"));
-			g_ptr_array_add(argv, g_strdup("-f"));
-			g_ptr_array_add(argv, g_strdup_printf(
-				"body=%s", body->str));
+
+			/*
+			 * Pass each param as an individual -f field.
+			 * glab api -f adds raw string parameters to the
+			 * request body as form fields.
+			 */
+			if (params != NULL)
+			{
+				GHashTableIter fiter;
+				gpointer fk;
+				gpointer fv;
+
+				g_hash_table_iter_init(&fiter, params);
+				while (g_hash_table_iter_next(&fiter, &fk, &fv))
+				{
+					const gchar *fkey = (const gchar *)fk;
+					const gchar *fval = (const gchar *)fv;
+
+					if (g_strcmp0(fkey, "number") == 0 ||
+					    g_strcmp0(fkey, "mirror_id") == 0)
+						continue;
+
+					/* Map to GitLab API field names */
+					if (g_strcmp0(fkey, "enable_issues") == 0)
+						fkey = "issues_enabled";
+					else if (g_strcmp0(fkey, "enable_wiki") == 0)
+						fkey = "wiki_enabled";
+					else if (g_strcmp0(fkey, "enable_projects") == 0)
+						fkey = "builds_enabled";
+					else if (g_strcmp0(fkey, "archive") == 0)
+						fkey = "archived";
+
+					g_ptr_array_add(argv, g_strdup("-f"));
+					g_ptr_array_add(argv, g_strdup_printf(
+						"%s=%s", fkey, fval));
+				}
+			}
 		}
 		break;
 
