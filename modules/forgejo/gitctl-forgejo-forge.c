@@ -641,7 +641,122 @@ build_repo_argv(
 		break;
 
 	case GCTL_VERB_MIGRATE:
-		/* Build: fj repo migrate <source-url> <name> [flags] */
+		/*
+		 * If a source_token is present we need to pass it to the
+		 * Forgejo server so its migration worker can authenticate
+		 * with the source forge API.  The fj CLI reads tokens from
+		 * stdin which is awkward, so we use the REST API via curl
+		 * instead — this lets us embed the token in the JSON body.
+		 */
+		val = get_param(params, "source_token");
+		if (val != NULL && *val != '\0') {
+			const gchar *host;
+			const gchar *forgejo_token;
+			const gchar *src_url;
+			const gchar *name;
+			const gchar *service;
+			const gchar *include;
+			gboolean is_mirror;
+			gboolean is_private;
+			g_autoptr(GString) body = NULL;
+
+			host = (context != NULL)
+				? gctl_forge_context_get_host(context) : NULL;
+			forgejo_token = g_getenv("FORGEJO_TOKEN");
+			if (forgejo_token == NULL)
+				forgejo_token = g_getenv("GITEA_TOKEN");
+
+			src_url = get_param(params, "source_url");
+			name = get_param(params, "name");
+			service = get_param(params, "service");
+			include = get_param(params, "include");
+			is_mirror = (get_param(params, "mirror") != NULL &&
+			             g_strcmp0(get_param(params, "mirror"),
+			                      "true") == 0);
+			is_private = (get_param(params, "private") != NULL &&
+			              g_strcmp0(get_param(params, "private"),
+			                       "true") == 0);
+
+			/* Build JSON body for POST /repos/migrate */
+			body = g_string_new("{");
+			g_string_append_printf(body,
+				"\"clone_addr\":\"%s\"", src_url);
+			if (name != NULL)
+				g_string_append_printf(body,
+					",\"repo_name\":\"%s\"", name);
+			g_string_append_printf(body,
+				",\"auth_token\":\"%s\"", val);
+			if (service != NULL)
+				g_string_append_printf(body,
+					",\"service\":\"%s\"", service);
+			if (is_mirror)
+				g_string_append(body, ",\"mirror\":true");
+			if (is_private)
+				g_string_append(body, ",\"private\":true");
+			if (include != NULL) {
+				if (strstr(include, "all") != NULL) {
+					g_string_append(body,
+						",\"wiki\":true"
+						",\"issues\":true"
+						",\"pull_requests\":true"
+						",\"releases\":true"
+						",\"milestones\":true"
+						",\"labels\":true"
+						",\"lfs\":true");
+				} else {
+					if (strstr(include, "wiki") != NULL)
+						g_string_append(body,
+							",\"wiki\":true");
+					if (strstr(include, "issues") != NULL)
+						g_string_append(body,
+							",\"issues\":true");
+					if (strstr(include, "prs") != NULL)
+						g_string_append(body,
+							",\"pull_requests\":true");
+					if (strstr(include, "releases") != NULL)
+						g_string_append(body,
+							",\"releases\":true");
+					if (strstr(include, "milestones") != NULL)
+						g_string_append(body,
+							",\"milestones\":true");
+					if (strstr(include, "labels") != NULL)
+						g_string_append(body,
+							",\"labels\":true");
+					if (strstr(include, "lfs") != NULL)
+						g_string_append(body,
+							",\"lfs\":true");
+				}
+			}
+			g_string_append(body, "}");
+
+			/* Build curl command */
+			g_ptr_array_set_size(argv, 0);
+			g_ptr_array_add(argv, g_strdup("curl"));
+			g_ptr_array_add(argv, g_strdup("-s"));
+			g_ptr_array_add(argv, g_strdup("-S"));
+			g_ptr_array_add(argv, g_strdup("-X"));
+			g_ptr_array_add(argv, g_strdup("POST"));
+			g_ptr_array_add(argv, g_strdup("-H"));
+			g_ptr_array_add(argv,
+				g_strdup("Accept: application/json"));
+			g_ptr_array_add(argv, g_strdup("-H"));
+			g_ptr_array_add(argv,
+				g_strdup("Content-Type: application/json"));
+			if (forgejo_token != NULL) {
+				g_ptr_array_add(argv, g_strdup("-H"));
+				g_ptr_array_add(argv, g_strdup_printf(
+					"Authorization: token %s",
+					forgejo_token));
+			}
+			g_ptr_array_add(argv, g_strdup("-d"));
+			g_ptr_array_add(argv, g_strdup(body->str));
+			g_ptr_array_add(argv, g_strdup_printf(
+				"https://%s/api/v1/repos/migrate",
+				host ? host : "localhost"));
+			break;
+		}
+
+		/* No source token — use fj CLI directly */
 		g_ptr_array_add(argv, g_strdup("migrate"));
 
 		val = get_param(params, "source_url");

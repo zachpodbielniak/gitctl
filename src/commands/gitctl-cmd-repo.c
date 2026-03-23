@@ -1194,9 +1194,45 @@ cmd_repo_migrate(
 		g_hash_table_insert(params, g_strdup("service"),
 		                    g_strdup(inferred_service));
 
-	if (opt_migrate_token_src != NULL)
+	if (opt_migrate_token_src != NULL) {
 		g_hash_table_insert(params, g_strdup("source_token"),
 		                    g_strdup(opt_migrate_token_src));
+	} else {
+		/*
+		 * Fall back to forge-specific environment variables for the
+		 * SOURCE forge token.  This token is needed by the destination
+		 * forge's migration worker to pull issues, PRs, etc. from
+		 * the source via its API.
+		 */
+		const gchar *env_token = NULL;
+
+		switch (source_forge_type) {
+		case GCTL_FORGE_TYPE_GITHUB:
+			env_token = g_getenv("GITHUB_TOKEN");
+			break;
+		case GCTL_FORGE_TYPE_GITLAB:
+			env_token = g_getenv("GITLAB_TOKEN");
+			break;
+		case GCTL_FORGE_TYPE_FORGEJO:
+			env_token = g_getenv("FORGEJO_TOKEN");
+			break;
+		case GCTL_FORGE_TYPE_GITEA:
+			env_token = g_getenv("GITEA_TOKEN");
+			break;
+		default:
+			break;
+		}
+
+		if (env_token != NULL && *env_token != '\0') {
+			g_hash_table_insert(params, g_strdup("source_token"),
+			                    g_strdup(env_token));
+			if (verbose)
+				g_printerr("note: using %s_TOKEN env var for "
+				           "source authentication\n",
+				           gctl_forge_type_to_string(
+				               source_forge_type));
+		}
+	}
 
 	/*
 	 * Build the destination forge context for the newly created repo.
