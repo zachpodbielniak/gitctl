@@ -328,6 +328,8 @@ cmd_mirror_add(
 	gchar *mirror_token = NULL;
 	gchar *mirror_username = NULL;
 	gboolean create_repo = FALSE;
+	gboolean opt_private = FALSE;
+	gboolean opt_public = FALSE;
 	g_autofree gchar *body = NULL;
 	gboolean is_dry_run;
 	gint ret;
@@ -347,6 +349,10 @@ cmd_mirror_add(
 		  "Username for the remote", "USER" },
 		{ "create-repo", 0, 0, G_OPTION_ARG_NONE, &create_repo,
 		  "Create the destination repo first", NULL },
+		{ "private", 'p', 0, G_OPTION_ARG_NONE, &opt_private,
+		  "Created repo is private (default: match source)", NULL },
+		{ "public", 0, 0, G_OPTION_ARG_NONE, &opt_public,
+		  "Created repo is public (default: match source)", NULL },
 		{ NULL }
 	};
 
@@ -454,6 +460,88 @@ cmd_mirror_add(
 	is_dry_run = gctl_executor_get_dry_run(executor);
 
 	/*
+	 * Determine visibility for --create-repo.  Priority:
+	 * 1. Explicit --private or --public flag
+	 * 2. Query the source repo to match its visibility
+	 * 3. Default to private (safe fallback)
+	 */
+	if (create_repo && !opt_private && !opt_public)
+	{
+		GctlForge *src_forge;
+		g_autoptr(GHashTable) get_params = NULL;
+		g_autoptr(GError) get_err = NULL;
+		gchar **get_argv;
+
+		src_forge = gctl_module_manager_find_forge(
+			module_manager, source_forge_type);
+
+		if (src_forge != NULL)
+		{
+			get_params = g_hash_table_new_full(
+				g_str_hash, g_str_equal, g_free, g_free);
+
+			get_argv = gctl_forge_build_argv(
+				src_forge, GCTL_RESOURCE_KIND_REPO,
+				GCTL_VERB_GET, context,
+				get_params, &get_err);
+
+			if (get_argv != NULL)
+			{
+				g_autoptr(GctlCommandResult) get_result = NULL;
+
+				get_result = gctl_executor_run(
+					executor,
+					(const gchar * const *)get_argv,
+					&get_err);
+				g_strfreev(get_argv);
+
+				if (get_result != NULL &&
+				    gctl_command_result_get_exit_code(get_result) == 0)
+				{
+					const gchar *out;
+					g_autoptr(GctlResource) src_res = NULL;
+
+					out = gctl_command_result_get_stdout(get_result);
+					if (out != NULL)
+					{
+						src_res = gctl_forge_parse_get_output(
+							src_forge, GCTL_RESOURCE_KIND_REPO,
+							out, &get_err);
+					}
+
+					if (src_res != NULL)
+					{
+						const gchar *vis;
+
+						vis = gctl_resource_get_state(src_res);
+						if (vis != NULL &&
+						    (g_ascii_strcasecmp(vis, "public") == 0 ||
+						     g_ascii_strcasecmp(vis, "PUBLIC") == 0))
+						{
+							opt_public = TRUE;
+						}
+						else
+						{
+							opt_private = TRUE;
+						}
+
+						if (gctl_app_get_verbose(app))
+							g_printerr("note: source repo is %s, "
+							           "mirrored repos will match\n",
+							           opt_public ? "public" : "private");
+					}
+				}
+			}
+
+			g_clear_error(&get_err);
+		}
+
+		/* Safe fallback if we couldn't determine visibility */
+		if (!opt_private && !opt_public)
+			opt_private = TRUE;
+	}
+
+	/*
 	 * --create-repo: optionally create the destination repository
 	 * before setting up the mirror.
 	 */
@@ -511,8 +599,12 @@ cmd_mirror_add(
 					create_params = g_hash_table_new_full(
 					    g_str_hash, g_str_equal, g_free, g_free);
 					g_hash_table_insert(create_params,
-					                    g_strdup("private"),
-					                    g_strdup("true"));
+					                    g_strdup("name"),
+					                    g_strdup(dest_repo));
+					if (opt_private)
+						g_hash_table_insert(create_params,
+						    g_strdup("private"),
+						    g_strdup("true"));
 
 					create_argv = gctl_forge_build_argv(
 					    dest_forge, GCTL_RESOURCE_KIND_REPO,
