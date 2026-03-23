@@ -158,6 +158,178 @@ test_resource_free(void)
 	gctl_resource_free(NULL);
 }
 
+/* test_resource_description: set/get description */
+static void
+test_resource_description(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_REPO);
+
+	/* Initially NULL */
+	g_assert_null(gctl_resource_get_description(res));
+
+	gctl_resource_set_description(res, "A test repository");
+	g_assert_cmpstr(gctl_resource_get_description(res),
+	                ==, "A test repository");
+
+	/* Overwrite */
+	gctl_resource_set_description(res, "Updated description");
+	g_assert_cmpstr(gctl_resource_get_description(res),
+	                ==, "Updated description");
+
+	/* Set to NULL */
+	gctl_resource_set_description(res, NULL);
+	g_assert_null(gctl_resource_get_description(res));
+}
+
+/* test_resource_url: set/get url */
+static void
+test_resource_url(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_PR);
+
+	/* Initially NULL */
+	g_assert_null(gctl_resource_get_url(res));
+
+	gctl_resource_set_url(res, "https://github.com/user/repo/pull/1");
+	g_assert_cmpstr(gctl_resource_get_url(res),
+	                ==, "https://github.com/user/repo/pull/1");
+
+	/* Overwrite */
+	gctl_resource_set_url(res, "https://github.com/user/repo/pull/2");
+	g_assert_cmpstr(gctl_resource_get_url(res),
+	                ==, "https://github.com/user/repo/pull/2");
+}
+
+/* test_resource_created_at: set/get created_at */
+static void
+test_resource_created_at(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_RELEASE);
+
+	/* Initially NULL */
+	g_assert_null(gctl_resource_get_created_at(res));
+
+	gctl_resource_set_created_at(res, "2026-03-23T10:00:00Z");
+	g_assert_cmpstr(gctl_resource_get_created_at(res),
+	                ==, "2026-03-23T10:00:00Z");
+
+	/* Set to NULL */
+	gctl_resource_set_created_at(res, NULL);
+	g_assert_null(gctl_resource_get_created_at(res));
+}
+
+/* test_resource_updated_at: set/get updated_at */
+static void
+test_resource_updated_at(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_ISSUE);
+
+	/* Initially NULL */
+	g_assert_null(gctl_resource_get_updated_at(res));
+
+	gctl_resource_set_updated_at(res, "2026-03-23T12:00:00Z");
+	g_assert_cmpstr(gctl_resource_get_updated_at(res),
+	                ==, "2026-03-23T12:00:00Z");
+
+	/* Overwrite */
+	gctl_resource_set_updated_at(res, "2026-03-24T08:00:00Z");
+	g_assert_cmpstr(gctl_resource_get_updated_at(res),
+	                ==, "2026-03-24T08:00:00Z");
+}
+
+/* test_resource_extra_overwrite: set extra key twice, verify second value */
+static void
+test_resource_extra_overwrite(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_PR);
+
+	gctl_resource_set_extra(res, "branch", "main");
+	g_assert_cmpstr(gctl_resource_get_extra(res, "branch"), ==, "main");
+
+	gctl_resource_set_extra(res, "branch", "develop");
+	g_assert_cmpstr(gctl_resource_get_extra(res, "branch"), ==, "develop");
+}
+
+/* test_resource_extra_null_value: set_extra with NULL value removes key */
+static void
+test_resource_extra_null_value(void)
+{
+	g_autoptr(GctlResource) res = NULL;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_ISSUE);
+
+	gctl_resource_set_extra(res, "label", "bug");
+	g_assert_cmpstr(gctl_resource_get_extra(res, "label"), ==, "bug");
+
+	/* Setting NULL should remove the key */
+	gctl_resource_set_extra(res, "label", NULL);
+	g_assert_null(gctl_resource_get_extra(res, "label"));
+}
+
+/* test_resource_copy_with_extra: create with extras, copy, verify extras copied */
+static void
+test_resource_copy_with_extra(void)
+{
+	g_autoptr(GctlResource) original = NULL;
+	g_autoptr(GctlResource) copy = NULL;
+
+	original = gctl_resource_new(GCTL_RESOURCE_KIND_CI);
+	gctl_resource_set_title(original, "Pipeline #123");
+	gctl_resource_set_extra(original, "run_id", "12345");
+	gctl_resource_set_extra(original, "branch", "feature-x");
+	gctl_resource_set_extra(original, "status", "success");
+
+	copy = gctl_resource_copy(original);
+	g_assert_nonnull(copy);
+
+	/* Verify extras are copied */
+	g_assert_cmpstr(gctl_resource_get_extra(copy, "run_id"), ==, "12345");
+	g_assert_cmpstr(gctl_resource_get_extra(copy, "branch"), ==, "feature-x");
+	g_assert_cmpstr(gctl_resource_get_extra(copy, "status"), ==, "success");
+
+	/* Verify the copy is independent */
+	gctl_resource_set_extra(original, "status", "failed");
+	g_assert_cmpstr(gctl_resource_get_extra(copy, "status"), ==, "success");
+}
+
+/* test_resource_all_kinds: create one of each resource kind, verify */
+static void
+test_resource_all_kinds(void)
+{
+	GctlResourceKind kinds[] = {
+		GCTL_RESOURCE_KIND_PR,
+		GCTL_RESOURCE_KIND_ISSUE,
+		GCTL_RESOURCE_KIND_REPO,
+		GCTL_RESOURCE_KIND_RELEASE,
+		GCTL_RESOURCE_KIND_MIRROR,
+		GCTL_RESOURCE_KIND_CI,
+		GCTL_RESOURCE_KIND_COMMIT,
+		GCTL_RESOURCE_KIND_LABEL,
+		GCTL_RESOURCE_KIND_NOTIFICATION,
+		GCTL_RESOURCE_KIND_KEY,
+		GCTL_RESOURCE_KIND_WEBHOOK,
+	};
+	guint i;
+
+	for (i = 0; i < G_N_ELEMENTS(kinds); i++) {
+		g_autoptr(GctlResource) res = NULL;
+
+		res = gctl_resource_new(kinds[i]);
+		g_assert_nonnull(res);
+		g_assert_cmpint(gctl_resource_get_kind(res), ==, kinds[i]);
+	}
+}
+
 int
 main(
 	int     argc,
@@ -172,6 +344,14 @@ main(
 	g_test_add_func("/resource/extra", test_resource_extra);
 	g_test_add_func("/resource/copy", test_resource_copy);
 	g_test_add_func("/resource/free", test_resource_free);
+	g_test_add_func("/resource/description", test_resource_description);
+	g_test_add_func("/resource/url", test_resource_url);
+	g_test_add_func("/resource/created-at", test_resource_created_at);
+	g_test_add_func("/resource/updated-at", test_resource_updated_at);
+	g_test_add_func("/resource/extra-overwrite", test_resource_extra_overwrite);
+	g_test_add_func("/resource/extra-null-value", test_resource_extra_null_value);
+	g_test_add_func("/resource/copy-with-extra", test_resource_copy_with_extra);
+	g_test_add_func("/resource/all-kinds", test_resource_all_kinds);
 
 	return g_test_run();
 }

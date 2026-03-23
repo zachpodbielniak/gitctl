@@ -98,6 +98,120 @@ test_verb_from_string(void)
 	g_assert_cmpint(gctl_verb_from_string(NULL),      ==, -1);
 }
 
+/* test_resource_kind_to_string: verify all resource kind conversions */
+static void
+test_resource_kind_to_string(void)
+{
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_PR),           ==, "pr");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_ISSUE),        ==, "issue");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_REPO),         ==, "repo");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_RELEASE),      ==, "release");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_MIRROR),       ==, "mirror");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_CI),           ==, "ci");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_COMMIT),       ==, "commit");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_LABEL),        ==, "label");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_NOTIFICATION), ==, "notification");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_KEY),          ==, "key");
+	g_assert_cmpstr(gctl_resource_kind_to_string(GCTL_RESOURCE_KIND_WEBHOOK),      ==, "webhook");
+
+	/* Out-of-range value should return "unknown" */
+	g_assert_cmpstr(gctl_resource_kind_to_string((GctlResourceKind)99), ==, "unknown");
+}
+
+/* test_resource_kind_gtype: verify the GType is properly registered */
+static void
+test_resource_kind_gtype(void)
+{
+	GType type;
+
+	type = GCTL_TYPE_RESOURCE_KIND;
+	g_assert_true(G_TYPE_IS_ENUM(type));
+}
+
+/* test_verb_new_values: verify to_string for the new verb values */
+static void
+test_verb_new_values(void)
+{
+	g_assert_cmpstr(gctl_verb_to_string(GCTL_VERB_SYNC),    ==, "sync");
+	g_assert_cmpstr(gctl_verb_to_string(GCTL_VERB_DIFF),    ==, "diff");
+	g_assert_cmpstr(gctl_verb_to_string(GCTL_VERB_LOG),     ==, "log");
+	g_assert_cmpstr(gctl_verb_to_string(GCTL_VERB_READ),    ==, "read");
+	g_assert_cmpstr(gctl_verb_to_string(GCTL_VERB_STAR),    ==, "star");
+	g_assert_cmpstr(gctl_verb_to_string(GCTL_VERB_UNSTAR),  ==, "unstar");
+	g_assert_cmpstr(gctl_verb_to_string(GCTL_VERB_MIGRATE), ==, "migrate");
+}
+
+/* test_verb_new_from_string: verify from_string for the new verb values */
+static void
+test_verb_new_from_string(void)
+{
+	g_assert_cmpint(gctl_verb_from_string("sync"),    ==, GCTL_VERB_SYNC);
+	g_assert_cmpint(gctl_verb_from_string("diff"),    ==, GCTL_VERB_DIFF);
+	g_assert_cmpint(gctl_verb_from_string("log"),     ==, GCTL_VERB_LOG);
+	g_assert_cmpint(gctl_verb_from_string("read"),    ==, GCTL_VERB_READ);
+	g_assert_cmpint(gctl_verb_from_string("star"),    ==, GCTL_VERB_STAR);
+	g_assert_cmpint(gctl_verb_from_string("unstar"),  ==, GCTL_VERB_UNSTAR);
+	g_assert_cmpint(gctl_verb_from_string("migrate"), ==, GCTL_VERB_MIGRATE);
+
+	/* Case insensitivity for new verbs */
+	g_assert_cmpint(gctl_verb_from_string("SYNC"),    ==, GCTL_VERB_SYNC);
+	g_assert_cmpint(gctl_verb_from_string("Diff"),    ==, GCTL_VERB_DIFF);
+	g_assert_cmpint(gctl_verb_from_string("MIGRATE"), ==, GCTL_VERB_MIGRATE);
+}
+
+/* test_forge_type_unknown: verify UNKNOWN string is "unknown" */
+static void
+test_forge_type_unknown(void)
+{
+	g_assert_cmpstr(gctl_forge_type_to_string(GCTL_FORGE_TYPE_UNKNOWN),
+	                ==, "unknown");
+	g_assert_cmpint(gctl_forge_type_from_string("unknown"),
+	                ==, GCTL_FORGE_TYPE_UNKNOWN);
+}
+
+/*
+ * test_verb_unknown_garbage: verify -1 from_string for garbage input
+ * including completely nonsensical strings
+ */
+static void
+test_verb_unknown_garbage(void)
+{
+	g_assert_cmpint(gctl_verb_from_string("xyzzy"),     ==, -1);
+	g_assert_cmpint(gctl_verb_from_string("123"),       ==, -1);
+	g_assert_cmpint(gctl_verb_from_string("list-all"),  ==, -1);
+	g_assert_cmpint(gctl_verb_from_string(" list"),     ==, -1);
+}
+
+/* test_forge_type_gtype: verify the GType is properly registered */
+static void
+test_forge_type_gtype(void)
+{
+	GType type;
+
+	type = GCTL_TYPE_FORGE_TYPE;
+	g_assert_true(G_TYPE_IS_ENUM(type));
+}
+
+/* test_verb_gtype: verify the GType is properly registered */
+static void
+test_verb_gtype(void)
+{
+	GType type;
+
+	type = GCTL_TYPE_VERB;
+	g_assert_true(G_TYPE_IS_ENUM(type));
+}
+
+/* test_output_format_gtype: verify the GType is properly registered */
+static void
+test_output_format_gtype(void)
+{
+	GType type;
+
+	type = GCTL_TYPE_OUTPUT_FORMAT;
+	g_assert_true(G_TYPE_IS_ENUM(type));
+}
+
 int
 main(
 	int     argc,
@@ -109,6 +223,15 @@ main(
 	g_test_add_func("/enums/forge-type-from-string", test_forge_type_from_string);
 	g_test_add_func("/enums/verb-to-string", test_verb_to_string);
 	g_test_add_func("/enums/verb-from-string", test_verb_from_string);
+	g_test_add_func("/enums/resource-kind-to-string", test_resource_kind_to_string);
+	g_test_add_func("/enums/resource-kind-gtype", test_resource_kind_gtype);
+	g_test_add_func("/enums/verb-new-values", test_verb_new_values);
+	g_test_add_func("/enums/verb-new-from-string", test_verb_new_from_string);
+	g_test_add_func("/enums/forge-type-unknown", test_forge_type_unknown);
+	g_test_add_func("/enums/verb-unknown-garbage", test_verb_unknown_garbage);
+	g_test_add_func("/enums/forge-type-gtype", test_forge_type_gtype);
+	g_test_add_func("/enums/verb-gtype", test_verb_gtype);
+	g_test_add_func("/enums/output-format-gtype", test_output_format_gtype);
 
 	return g_test_run();
 }
