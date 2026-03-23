@@ -23,6 +23,7 @@ struct _GctlConfig
 	GctlForgeType     default_forge;
 	GHashTable       *forge_hosts;   /* gchar* hostname -> GINT_TO_POINTER(GctlForgeType) */
 	GHashTable       *cli_paths;     /* gchar* forge key -> gchar* path */
+	GHashTable       *default_hosts; /* gchar* forge key -> gchar* default hostname */
 	GHashTable       *aliases;       /* gchar* alias -> gchar* expanded */
 };
 
@@ -113,6 +114,17 @@ populate_defaults(GctlConfig *self)
 	g_hash_table_insert(self->cli_paths,
 	                    g_strdup(forge_type_key(GCTL_FORGE_TYPE_GITEA)),
 	                    g_strdup("tea"));
+
+	/* Default host per forge — matches the forge_hosts entries above */
+	g_hash_table_insert(self->default_hosts,
+	                    g_strdup(forge_type_key(GCTL_FORGE_TYPE_GITHUB)),
+	                    g_strdup("github.com"));
+	g_hash_table_insert(self->default_hosts,
+	                    g_strdup(forge_type_key(GCTL_FORGE_TYPE_GITLAB)),
+	                    g_strdup("gitlab.com"));
+	g_hash_table_insert(self->default_hosts,
+	                    g_strdup(forge_type_key(GCTL_FORGE_TYPE_FORGEJO)),
+	                    g_strdup("codeberg.org"));
 }
 
 /*
@@ -227,6 +239,18 @@ apply_forges_override(
 			                    g_strdup(cli_val));
 		}
 
+		/* default_host explicit override */
+		{
+			const gchar *dh;
+
+			dh = yaml_mapping_get_string_member(forge_map, "default_host");
+			if (dh != NULL) {
+				g_hash_table_insert(self->default_hosts,
+				                    g_strdup(forge_type_key(ft)),
+				                    g_strdup(dh));
+			}
+		}
+
 		/* hosts override */
 		if (!yaml_mapping_has_member(forge_map, "hosts"))
 			continue;
@@ -241,10 +265,25 @@ apply_forges_override(
 
 			host = yaml_sequence_get_string_element(hosts_seq, j);
 			if (host != NULL) {
+				g_autofree gchar *trimmed = g_strstrip(g_strdup(host));
+
 				g_hash_table_insert(
 					self->forge_hosts,
-					g_strdup(host),
+					g_strdup(trimmed),
 					GINT_TO_POINTER(ft));
+
+				/*
+				 * If no explicit default_host was set,
+				 * use the first host in the list.
+				 */
+				if (j == 0 && !yaml_mapping_has_member(
+				                  forge_map, "default_host"))
+				{
+					g_hash_table_insert(
+						self->default_hosts,
+						g_strdup(forge_type_key(ft)),
+						g_strdup(trimmed));
+				}
 			}
 		}
 	}
@@ -307,6 +346,7 @@ gctl_config_finalize(GObject *object)
 	g_free(self->default_remote);
 	g_clear_pointer(&self->forge_hosts, g_hash_table_unref);
 	g_clear_pointer(&self->cli_paths, g_hash_table_unref);
+	g_clear_pointer(&self->default_hosts, g_hash_table_unref);
 	g_clear_pointer(&self->aliases, g_hash_table_unref);
 
 	G_OBJECT_CLASS(gctl_config_parent_class)->finalize(object);
@@ -326,12 +366,14 @@ gctl_config_init(GctlConfig *self)
 {
 	self->config_path = NULL;
 
-	self->forge_hosts = g_hash_table_new_full(g_str_hash, g_str_equal,
-	                                          g_free, NULL);
-	self->cli_paths   = g_hash_table_new_full(g_str_hash, g_str_equal,
-	                                          g_free, g_free);
-	self->aliases     = g_hash_table_new_full(g_str_hash, g_str_equal,
-	                                          g_free, g_free);
+	self->forge_hosts   = g_hash_table_new_full(g_str_hash, g_str_equal,
+	                                            g_free, NULL);
+	self->cli_paths     = g_hash_table_new_full(g_str_hash, g_str_equal,
+	                                            g_free, g_free);
+	self->default_hosts = g_hash_table_new_full(g_str_hash, g_str_equal,
+	                                            g_free, g_free);
+	self->aliases       = g_hash_table_new_full(g_str_hash, g_str_equal,
+	                                            g_free, g_free);
 
 	populate_defaults(self);
 }
@@ -497,19 +539,43 @@ gctl_config_get_default_host(
 	GctlConfig   *self,
 	GctlForgeType forge_type
 ){
-	GHashTableIter iter;
-	gpointer key;
-	gpointer value;
+	const gchar *env_val;
 
 	g_return_val_if_fail(GCTL_IS_CONFIG(self), NULL);
 
-	g_hash_table_iter_init(&iter, self->forge_hosts);
-	while (g_hash_table_iter_next(&iter, &key, &value)) {
-		if ((GctlForgeType)GPOINTER_TO_INT(value) == forge_type)
-			return (const gchar *)key;
+	/*
+	 * Environment variables take highest priority:
+	 *   GITCTL_HOST_GITHUB, GITCTL_HOST_GITLAB,
+	 *   GITCTL_HOST_FORGEJO, GITCTL_HOST_GITEA
+	 */
+	switch (forge_type) {
+	case GCTL_FORGE_TYPE_GITHUB:
+		env_val = g_getenv("GITCTL_HOST_GITHUB");
+		break;
+	case GCTL_FORGE_TYPE_GITLAB:
+		env_val = g_getenv("GITCTL_HOST_GITLAB");
+		break;
+	case GCTL_FORGE_TYPE_FORGEJO:
+		env_val = g_getenv("GITCTL_HOST_FORGEJO");
+		break;
+	case GCTL_FORGE_TYPE_GITEA:
+		env_val = g_getenv("GITCTL_HOST_GITEA");
+		break;
+	default:
+		env_val = NULL;
 	}
 
-	return NULL;
+	if (env_val != NULL && *env_val != '\0')
+		return env_val;
+
+	/*
+	 * Fall back to the default_hosts table, populated from:
+	 *   1. Explicit "default_host" key in the YAML forge config
+	 *   2. First entry in the "hosts" array for that forge
+	 *   3. Built-in defaults (github.com, gitlab.com, codeberg.org)
+	 */
+	return (const gchar *)g_hash_table_lookup(
+		self->default_hosts, forge_type_key(forge_type));
 }
 
 const gchar *

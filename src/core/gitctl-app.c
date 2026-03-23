@@ -340,6 +340,10 @@ gctl_app_initialize(
 		return FALSE;
 	}
 
+	/* Load user config from XDG_CONFIG_HOME/gitctl/config.yaml */
+	if (!gctl_config_load_default(priv->config, error))
+		return FALSE;
+
 	/* 2. Executor (subprocess runner) */
 	priv->executor = gctl_executor_new();
 	gctl_executor_set_dry_run(priv->executor, priv->dry_run);
