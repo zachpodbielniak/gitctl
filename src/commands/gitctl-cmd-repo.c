@@ -548,9 +548,32 @@ setup_mirror_to(
 		}
 
 		/* Build the push mirror API endpoint for the source repo */
-		endpoint = g_strdup_printf("/repos/%s/%s/push_mirrors",
-		                           gctl_forge_context_get_owner(source_context),
-		                           gctl_forge_context_get_repo_name(source_context));
+		{
+			const gchar *src_owner;
+			const gchar *src_repo;
+
+			src_owner = gctl_forge_context_get_owner(source_context);
+			src_repo = gctl_forge_context_get_repo_name(source_context);
+
+			/*
+			 * If owner is unknown (no git remote and no --repo),
+			 * try GITCTL_USER env var.
+			 */
+			if (src_owner == NULL || *src_owner == '\0')
+				src_owner = g_getenv("GITCTL_USER");
+
+			if (src_owner == NULL || *src_owner == '\0' ||
+			    src_repo == NULL || *src_repo == '\0')
+			{
+				g_printerr("warning: cannot determine owner/repo for "
+				           "push mirror. Set GITCTL_USER or use "
+				           "--repo owner/repo\n");
+				return;
+			}
+
+			endpoint = g_strdup_printf("/repos/%s/%s/push_mirrors",
+			                           src_owner, src_repo);
+		}
 
 		if (verbose)
 			g_printerr("note: adding push mirror: POST %s\n", endpoint);
@@ -667,6 +690,8 @@ cmd_repo_create(
 	repo_name = argv[1];
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
+	g_hash_table_insert(params, g_strdup("name"), g_strdup(repo_name));
+
 	if (is_private)
 		g_hash_table_insert(params, g_strdup("private"), g_strdup("true"));
 
@@ -683,32 +708,45 @@ cmd_repo_create(
 	/* Post-create: set up push mirrors if --mirror-to was specified */
 	if (ret == 0 && opt_mirror_to != NULL)
 	{
-		GctlContextResolver *resolver;
 		GctlConfig *config;
 		g_autoptr(GctlForgeContext) source_context = NULL;
-		g_autoptr(GError) resolve_err = NULL;
-		const gchar *default_remote;
 		gint m;
 
 		config = gctl_app_get_config(app);
-		resolver = gctl_app_get_resolver(app);
-		default_remote = gctl_config_get_default_remote(config);
 
-		source_context = gctl_context_resolver_resolve(
-		    resolver, default_remote, &resolve_err);
-
-		if (source_context == NULL)
+		/*
+		 * Build the source context directly from what we know:
+		 * the forge type (forced or default), the repo name we
+		 * just created, and GITCTL_USER for the owner.
+		 * Don't rely on git remote resolution since the repo
+		 * may not have a remote configured yet.
+		 *
+		 * Use the resolved forge type from the execute_verb call
+		 * (which respects --forge).  We get it by re-resolving
+		 * from the context resolver which has the forced_forge set.
+		 */
 		{
-			g_printerr("warning: could not resolve source forge context "
-			           "for mirror setup: %s\n",
-			           resolve_err ? resolve_err->message : "unknown error");
+			GctlContextResolver *res;
+			GctlForgeType ft;
+			const gchar *host;
+			const gchar *cli;
+			const gchar *owner;
+
+			res = gctl_app_get_resolver(app);
+			ft = gctl_context_resolver_get_forced_forge(res);
+			if (ft == GCTL_FORGE_TYPE_UNKNOWN)
+				ft = gctl_config_get_default_forge(config);
+			host = gctl_config_get_default_host(config, ft);
+			cli = gctl_config_get_cli_path(config, ft);
+			owner = g_getenv("GITCTL_USER");
+
+			source_context = gctl_forge_context_new(
+			    ft, NULL, owner, repo_name, host, cli);
 		}
-		else
+
+		for (m = 0; opt_mirror_to[m] != NULL; m++)
 		{
-			for (m = 0; opt_mirror_to[m] != NULL; m++)
-			{
-				setup_mirror_to(app, opt_mirror_to[m], source_context);
-			}
+			setup_mirror_to(app, opt_mirror_to[m], source_context);
 		}
 	}
 

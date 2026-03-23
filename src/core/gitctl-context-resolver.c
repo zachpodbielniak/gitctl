@@ -392,6 +392,15 @@ gctl_context_resolver_set_forced_forge(
 	self->forced_forge = forge_type;
 }
 
+GctlForgeType
+gctl_context_resolver_get_forced_forge(GctlContextResolver *self)
+{
+	g_return_val_if_fail(GCTL_IS_CONTEXT_RESOLVER(self),
+	                     GCTL_FORGE_TYPE_UNKNOWN);
+
+	return self->forced_forge;
+}
+
 void
 gctl_context_resolver_set_forced_repo(
 	GctlContextResolver  *self,

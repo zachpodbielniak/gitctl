@@ -56,6 +56,17 @@ gctl_context_resolver_set_forced_forge(
 );
 
 /**
+ * gctl_context_resolver_get_forced_forge:
+ * @self: a #GctlContextResolver
+ *
+ * Returns the forced forge type, or %GCTL_FORGE_TYPE_UNKNOWN if none.
+ *
+ * Returns: the forced #GctlForgeType
+ */
+GctlForgeType
+gctl_context_resolver_get_forced_forge(GctlContextResolver *self);
+
+/**
  * gctl_context_resolver_resolve:
  * @self: a #GctlContextResolver
  * @remote_name: the git remote name to inspect (e.g. "origin")
