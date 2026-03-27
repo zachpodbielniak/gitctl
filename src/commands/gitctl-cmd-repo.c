@@ -1045,7 +1045,8 @@ cmd_repo_clone(
  * @argc: remaining argument count after verb
  * @argv: remaining argument vector after verb
  *
- * Handles "gitctl repo delete <owner/repo>".
+ * Handles "gitctl repo delete <owner/repo>".  Requires --yes / -y
+ * to confirm the destructive operation (skipped in --dry-run mode).
  *
  * Returns: 0 on success, 1 on error
  */
@@ -1055,18 +1056,49 @@ cmd_repo_delete(
 	gint      argc,
 	gchar   **argv
 ){
+	g_autoptr(GOptionContext) opt_context = NULL;
 	g_autoptr(GHashTable) params = NULL;
+	g_autoptr(GError) error = NULL;
 	const gchar *owner_repo;
+	gboolean opt_yes = FALSE;
+
+	GOptionEntry entries[] = {
+		{ "yes", 'y', 0, G_OPTION_ARG_NONE, &opt_yes,
+		  "Skip confirmation prompt (DANGEROUS)", NULL },
+		{ NULL }
+	};
+
+	opt_context = g_option_context_new("<owner/repo> - delete a repository");
+	g_option_context_add_main_entries(opt_context, entries, NULL);
+
+	if (!g_option_context_parse(opt_context, &argc, &argv, &error))
+	{
+		g_printerr("error: %s\n", error->message);
+		return 1;
+	}
 
 	if (argc < 2)
 	{
 		g_printerr("error: repository identifier required (owner/repo)\n");
-		g_printerr("Usage: gitctl repo delete <owner/repo>\n");
+		g_printerr("Usage: gitctl repo delete [--yes] <owner/repo>\n");
 		return 1;
 	}
 
 	owner_repo = argv[1];
+
+	/* Require explicit --yes unless running in dry-run mode */
+	if (!opt_yes && !gctl_app_get_dry_run(app))
+	{
+		g_printerr("warning: this will PERMANENTLY delete repository '%s'\n",
+		           owner_repo);
+		g_printerr("Run with --yes to confirm, or --dry-run to preview.\n");
+		return 1;
+	}
+
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	if (opt_yes)
+		g_hash_table_insert(params, g_strdup("confirm"), g_strdup("true"));
 
 	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
 	                             GCTL_VERB_DELETE, owner_repo, params);

@@ -41,6 +41,22 @@
 #include "module/gitctl-module-manager.h"
 
 /**
+ * Destructive verb safety:
+ *
+ * All command handlers for destructive verbs (GCTL_VERB_DELETE and
+ * similar remove operations) MUST require an explicit --yes / -y
+ * flag from the user before proceeding.  Without it, the handler
+ * prints a warning and returns 1 (unless --dry-run is active, in
+ * which case the operation always proceeds since nothing executes).
+ *
+ * When --yes is supplied, the handler inserts a "confirm" key with
+ * value "true" into the params hash table.  Forge modules MUST
+ * check for this key before appending "--yes" to the CLI argv —
+ * this prevents the forge CLI from auto-confirming without the
+ * user's explicit consent.
+ */
+
+/**
  * GctlVerbEntry:
  * @name: the verb string (e.g. "list", "get")
  * @description: a short human-readable description for usage output

@@ -660,7 +660,9 @@ build_repo_argv(
 			g_ptr_array_add(argv, g_strdup(slug));
 		}
 
-		g_ptr_array_add(argv, g_strdup("--yes"));
+		val = get_param(params, "confirm");
+		if (val != NULL && g_strcmp0(val, "true") == 0)
+			g_ptr_array_add(argv, g_strdup("--yes"));
 		break;
 
 	case GCTL_VERB_BROWSE:
@@ -898,7 +900,9 @@ build_release_argv(
 		if (val != NULL)
 			g_ptr_array_add(argv, g_strdup(val));
 
-		g_ptr_array_add(argv, g_strdup("--yes"));
+		val = get_param(params, "confirm");
+		if (val != NULL && g_strcmp0(val, "true") == 0)
+			g_ptr_array_add(argv, g_strdup("--yes"));
 		break;
 
 	default:
