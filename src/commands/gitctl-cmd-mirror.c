@@ -312,7 +312,6 @@ cmd_mirror_add(
 	gchar   **argv
 ){
 	g_autoptr(GOptionContext) opt_context = NULL;
-	g_autoptr(GHashTable) params = NULL;
 	g_autoptr(GError) error = NULL;
 	GctlExecutor *executor;
 	GctlContextResolver *resolver;
@@ -321,32 +320,32 @@ cmd_mirror_add(
 	g_autoptr(GctlForgeContext) context = NULL;
 	GctlForgeType source_forge_type;
 	const gchar *default_remote;
-	gchar *mirror_url = NULL;
+	gchar **mirror_urls = NULL;
 	gchar *direction = NULL;
 	gchar *interval = NULL;
 	gboolean sync_on_commit = FALSE;
-	gchar *mirror_token = NULL;
-	gchar *mirror_username = NULL;
+	gchar *opt_token = NULL;
+	gchar *opt_username = NULL;
 	gboolean create_repo = FALSE;
 	gboolean opt_private = FALSE;
 	gboolean opt_public = FALSE;
-	g_autofree gchar *body = NULL;
 	gboolean is_dry_run;
 	gint ret;
+	gint url_idx;
 
 	GOptionEntry entries[] = {
-		{ "url", 'u', 0, G_OPTION_ARG_STRING, &mirror_url,
-		  "Remote repository URL for the mirror (required)", "URL" },
+		{ "url", 'u', 0, G_OPTION_ARG_STRING_ARRAY, &mirror_urls,
+		  "Remote repository URL (repeatable)", "URL" },
 		{ "direction", 'd', 0, G_OPTION_ARG_STRING, &direction,
 		  "Mirror direction: push or pull (default: push)", "DIR" },
 		{ "interval", 'i', 0, G_OPTION_ARG_STRING, &interval,
 		  "Sync interval (default: 8h0m0s)", "INTERVAL" },
 		{ "sync-on-commit", 0, 0, G_OPTION_ARG_NONE, &sync_on_commit,
 		  "Sync on every push", NULL },
-		{ "token", 't', 0, G_OPTION_ARG_STRING, &mirror_token,
-		  "Auth token for the remote", "TOKEN" },
-		{ "username", 0, 0, G_OPTION_ARG_STRING, &mirror_username,
-		  "Username for the remote", "USER" },
+		{ "token", 't', 0, G_OPTION_ARG_STRING, &opt_token,
+		  "Auth token override for all destinations", "TOKEN" },
+		{ "username", 0, 0, G_OPTION_ARG_STRING, &opt_username,
+		  "Username override for all destinations", "USER" },
 		{ "create-repo", 0, 0, G_OPTION_ARG_NONE, &create_repo,
 		  "Create the destination repo first", NULL },
 		{ "private", 'p', 0, G_OPTION_ARG_NONE, &opt_private,
@@ -366,10 +365,10 @@ cmd_mirror_add(
 		goto out;
 	}
 
-	if (mirror_url == NULL)
+	if (mirror_urls == NULL || mirror_urls[0] == NULL)
 	{
-		g_printerr("error: --url is required\n");
-		g_printerr("Usage: gitctl mirror add --url <url> [options]\n");
+		g_printerr("error: --url is required (may be repeated)\n");
+		g_printerr("Usage: gitctl mirror add --url <url> [--url <url2>] [options]\n");
 		ret = 1;
 		goto out;
 	}
@@ -379,66 +378,6 @@ cmd_mirror_add(
 		direction = g_strdup("push");
 	if (interval == NULL)
 		interval = g_strdup("8h0m0s");
-
-	/*
-	 * Auto-detect username and token from the mirror URL when not
-	 * explicitly provided.  Parse the URL to determine the destination
-	 * forge, then use the corresponding env var for the token and
-	 * extract the owner from the URL path as the username.
-	 */
-	{
-		g_autofree gchar *dest_host = NULL;
-		g_autofree gchar *dest_owner = NULL;
-		g_autofree gchar *dest_repo = NULL;
-		GctlConfig *cfg;
-
-		cfg = gctl_app_get_config(app);
-
-		if (parse_mirror_url(mirror_url, &dest_host,
-		                     &dest_owner, &dest_repo))
-		{
-			/* Auto-detect username from URL owner */
-			if (mirror_username == NULL && dest_owner != NULL)
-				mirror_username = g_strdup(dest_owner);
-
-			/* Auto-detect token from destination forge env var */
-			if (mirror_token == NULL && cfg != NULL)
-			{
-				GctlForgeType dest_ft;
-				const gchar *env_token = NULL;
-
-				dest_ft = gctl_config_get_forge_for_host(
-					cfg, dest_host);
-
-				switch (dest_ft) {
-				case GCTL_FORGE_TYPE_GITHUB:
-					env_token = g_getenv("GITHUB_TOKEN");
-					break;
-				case GCTL_FORGE_TYPE_GITLAB:
-					env_token = g_getenv("GITLAB_TOKEN");
-					break;
-				case GCTL_FORGE_TYPE_FORGEJO:
-					env_token = g_getenv("FORGEJO_TOKEN");
-					break;
-				case GCTL_FORGE_TYPE_GITEA:
-					env_token = g_getenv("GITEA_TOKEN");
-					break;
-				default:
-					break;
-				}
-
-				if (env_token != NULL && *env_token != '\0') {
-					mirror_token = g_strdup(env_token);
-					if (gctl_app_get_verbose(app))
-						g_printerr("note: using %s token "
-						           "from env var for mirror "
-						           "destination\n",
-						           gctl_forge_type_to_string(
-						               dest_ft));
-				}
-			}
-		}
-	}
 
 	/* Resolve the source forge context */
 	executor = gctl_app_get_executor(app);
@@ -542,131 +481,159 @@ cmd_mirror_add(
 	}
 
 	/*
-	 * --create-repo: optionally create the destination repository
-	 * before setting up the mirror.
+	 * Process each --url.  For each URL:
+	 * 1. Auto-detect username + token from the destination
+	 * 2. Optionally create the destination repo (--create-repo)
+	 * 3. Add the push mirror
 	 */
-	if (create_repo)
+	ret = 0;
+	for (url_idx = 0; mirror_urls[url_idx] != NULL; url_idx++)
 	{
+		const gchar *cur_url;
 		g_autofree gchar *dest_host = NULL;
 		g_autofree gchar *dest_owner = NULL;
 		g_autofree gchar *dest_repo = NULL;
+		g_autofree gchar *auto_username = NULL;
+		g_autofree gchar *auto_token = NULL;
+		const gchar *use_username;
+		const gchar *use_token;
+		g_autofree gchar *body = NULL;
+		g_autoptr(GHashTable) params = NULL;
+		gint url_ret;
 
-		if (!parse_mirror_url(mirror_url, &dest_host, &dest_owner, &dest_repo))
+		cur_url = mirror_urls[url_idx];
+
+		/*
+		 * Auto-detect username and token from the destination URL.
+		 * Explicit --token/--username override the auto-detected values.
+		 */
+		if (parse_mirror_url(cur_url, &dest_host, &dest_owner, &dest_repo))
 		{
-			g_printerr("warning: could not parse --url for --create-repo, "
-			           "skipping repo creation\n");
+			auto_username = g_strdup(dest_owner);
+
+			if (opt_token == NULL && config != NULL)
+			{
+				GctlForgeType dest_ft;
+				const gchar *env_token = NULL;
+
+				dest_ft = gctl_config_get_forge_for_host(
+					config, dest_host);
+
+				switch (dest_ft) {
+				case GCTL_FORGE_TYPE_GITHUB:
+					env_token = g_getenv("GITHUB_TOKEN");
+					break;
+				case GCTL_FORGE_TYPE_GITLAB:
+					env_token = g_getenv("GITLAB_TOKEN");
+					break;
+				case GCTL_FORGE_TYPE_FORGEJO:
+					env_token = g_getenv("FORGEJO_TOKEN");
+					break;
+				case GCTL_FORGE_TYPE_GITEA:
+					env_token = g_getenv("GITEA_TOKEN");
+					break;
+				default:
+					break;
+				}
+
+				if (env_token != NULL && *env_token != '\0') {
+					auto_token = g_strdup(env_token);
+					if (gctl_app_get_verbose(app))
+						g_printerr("note: using %s token for %s\n",
+						           gctl_forge_type_to_string(dest_ft),
+						           cur_url);
+				}
+			}
 		}
-		else
+
+		use_username = (opt_username != NULL) ? opt_username : auto_username;
+		use_token = (opt_token != NULL) ? opt_token : auto_token;
+
+		/* --create-repo: create destination repo first */
+		if (create_repo && dest_host != NULL && dest_owner != NULL
+		    && dest_repo != NULL)
 		{
 			GctlForgeType dest_forge_type;
 			GctlForge *dest_forge;
 
-			dest_forge_type = gctl_config_get_forge_for_host(config, dest_host);
+			dest_forge_type = gctl_config_get_forge_for_host(
+				config, dest_host);
 
-			if (dest_forge_type == GCTL_FORGE_TYPE_UNKNOWN)
+			dest_forge = (dest_forge_type != GCTL_FORGE_TYPE_UNKNOWN)
+				? gctl_module_manager_find_forge(
+				      module_manager, dest_forge_type)
+				: NULL;
+
+			if (dest_forge != NULL)
 			{
-				g_printerr("warning: unknown forge for host '%s', "
-				           "skipping repo creation\n", dest_host);
-			}
-			else
-			{
-				dest_forge = gctl_module_manager_find_forge(
-				    module_manager, dest_forge_type);
+				g_autoptr(GctlForgeContext) dest_context = NULL;
+				g_autoptr(GHashTable) create_params = NULL;
+				g_autoptr(GError) create_error = NULL;
+				g_autoptr(GctlCommandResult) create_result = NULL;
+				const gchar *dest_cli;
+				gchar **create_argv;
 
-				if (dest_forge == NULL)
-				{
-					g_printerr("warning: no module for %s, "
-					           "skipping repo creation\n",
-					           gctl_forge_type_to_string(dest_forge_type));
-				}
-				else
-				{
-					g_autoptr(GctlForgeContext) dest_context = NULL;
-					g_autoptr(GHashTable) create_params = NULL;
-					g_autoptr(GError) create_error = NULL;
-					g_autoptr(GctlCommandResult) create_result = NULL;
-					const gchar *dest_cli;
-					gchar **create_argv;
-
-					dest_cli = gctl_config_get_cli_path(
-					    config, dest_forge_type);
-
-					dest_context = gctl_forge_context_new(
-					    dest_forge_type, mirror_url,
-					    dest_owner, dest_repo,
-					    dest_host, dest_cli);
-
-					create_params = g_hash_table_new_full(
-					    g_str_hash, g_str_equal, g_free, g_free);
+				dest_cli = gctl_config_get_cli_path(
+				    config, dest_forge_type);
+				dest_context = gctl_forge_context_new(
+				    dest_forge_type, cur_url,
+				    dest_owner, dest_repo,
+				    dest_host, dest_cli);
+				create_params = g_hash_table_new_full(
+				    g_str_hash, g_str_equal, g_free, g_free);
+				g_hash_table_insert(create_params,
+				    g_strdup("name"), g_strdup(dest_repo));
+				if (opt_private)
 					g_hash_table_insert(create_params,
-					                    g_strdup("name"),
-					                    g_strdup(dest_repo));
-					if (opt_private)
-						g_hash_table_insert(create_params,
-						    g_strdup("private"),
-						    g_strdup("true"));
+					    g_strdup("private"), g_strdup("true"));
 
-					create_argv = gctl_forge_build_argv(
-					    dest_forge, GCTL_RESOURCE_KIND_REPO,
-					    GCTL_VERB_CREATE, dest_context,
-					    create_params, &create_error);
+				create_argv = gctl_forge_build_argv(
+				    dest_forge, GCTL_RESOURCE_KIND_REPO,
+				    GCTL_VERB_CREATE, dest_context,
+				    create_params, &create_error);
 
-					if (create_argv == NULL)
-					{
-						g_printerr("warning: could not build repo create "
-						           "command: %s\n",
-						           create_error ? create_error->message
-						                        : "unknown error");
-					}
-					else
-					{
-						create_result = gctl_executor_run(
-						    executor,
-						    (const gchar * const *)create_argv,
-						    &create_error);
-						g_strfreev(create_argv);
-
-						if (create_result == NULL ||
-						    gctl_command_result_get_exit_code(create_result) != 0)
-						{
-							g_printerr("warning: repo creation failed "
-							           "(may already exist), continuing "
-							           "with mirror setup\n");
-						}
-					}
+				if (create_argv != NULL)
+				{
+					create_result = gctl_executor_run(
+					    executor,
+					    (const gchar * const *)create_argv,
+					    &create_error);
+					g_strfreev(create_argv);
 				}
 			}
 		}
+
+		/* Build the push mirror JSON body */
+		body = build_push_mirror_body(source_forge_type, cur_url,
+		                              use_username, use_token,
+		                              interval, sync_on_commit,
+		                              is_dry_run);
+
+		if (body == NULL)
+		{
+			g_printerr("error: push mirrors not supported for %s\n",
+			           gctl_forge_type_to_string(source_forge_type));
+			ret = 1;
+			goto out;
+		}
+
+		params = g_hash_table_new_full(g_str_hash, g_str_equal,
+		                               g_free, g_free);
+		g_hash_table_insert(params, g_strdup("body"), g_strdup(body));
+
+		url_ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_MIRROR,
+		                                GCTL_VERB_CREATE, NULL, params);
+
+		if (url_ret != 0)
+			ret = url_ret;
 	}
-
-	/*
-	 * Build the JSON body for the push mirror API call.
-	 * In dry-run mode, mask the token so it does not leak.
-	 */
-	body = build_push_mirror_body(source_forge_type, mirror_url,
-	                              mirror_username, mirror_token,
-	                              interval, sync_on_commit, is_dry_run);
-
-	if (body == NULL)
-	{
-		g_printerr("error: push mirrors are not supported for %s\n",
-		           gctl_forge_type_to_string(source_forge_type));
-		ret = 1;
-		goto out;
-	}
-
-	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-	g_hash_table_insert(params, g_strdup("body"), g_strdup(body));
-
-	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_MIRROR,
-	                            GCTL_VERB_CREATE, NULL, params);
 
 out:
-	g_free(mirror_url);
+	g_strfreev(mirror_urls);
 	g_free(direction);
 	g_free(interval);
-	g_free(mirror_token);
-	g_free(mirror_username);
+	g_free(opt_token);
+	g_free(opt_username);
 
 	return ret;
 }
