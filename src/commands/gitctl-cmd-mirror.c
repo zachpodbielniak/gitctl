@@ -326,7 +326,7 @@ cmd_mirror_add(
 	gboolean sync_on_commit = FALSE;
 	gchar *opt_token = NULL;
 	gchar *opt_username = NULL;
-	gboolean create_repo = FALSE;
+	gboolean skip_create_repo = FALSE;
 	gboolean opt_private = FALSE;
 	gboolean opt_public = FALSE;
 	gboolean is_dry_run;
@@ -346,8 +346,8 @@ cmd_mirror_add(
 		  "Auth token override for all destinations", "TOKEN" },
 		{ "username", 0, 0, G_OPTION_ARG_STRING, &opt_username,
 		  "Username override for all destinations", "USER" },
-		{ "create-repo", 0, 0, G_OPTION_ARG_NONE, &create_repo,
-		  "Create the destination repo first", NULL },
+		{ "no-create-repo", 0, 0, G_OPTION_ARG_NONE, &skip_create_repo,
+		  "Skip creating the destination repo", NULL },
 		{ "private", 'p', 0, G_OPTION_ARG_NONE, &opt_private,
 		  "Created repo is private (default: match source)", NULL },
 		{ "public", 0, 0, G_OPTION_ARG_NONE, &opt_public,
@@ -404,7 +404,7 @@ cmd_mirror_add(
 	 * 2. Query the source repo to match its visibility
 	 * 3. Default to private (safe fallback)
 	 */
-	if (create_repo && !opt_private && !opt_public)
+	if (!skip_create_repo && !opt_private && !opt_public)
 	{
 		GctlForge *src_forge;
 		g_autoptr(GHashTable) get_params = NULL;
@@ -549,9 +549,13 @@ cmd_mirror_add(
 		use_username = (opt_username != NULL) ? opt_username : auto_username;
 		use_token = (opt_token != NULL) ? opt_token : auto_token;
 
-		/* --create-repo: create destination repo first */
-		if (create_repo && dest_host != NULL && dest_owner != NULL
-		    && dest_repo != NULL)
+		/*
+		 * Create the destination repo before adding the mirror.
+		 * This is the default — use --no-create-repo to skip.
+		 * Errors are ignored since the repo may already exist.
+		 */
+		if (!skip_create_repo && dest_host != NULL &&
+		    dest_owner != NULL && dest_repo != NULL)
 		{
 			GctlForgeType dest_forge_type;
 			GctlForge *dest_forge;
