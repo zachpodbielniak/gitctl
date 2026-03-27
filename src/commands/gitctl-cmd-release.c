@@ -138,9 +138,10 @@ cmd_release_get(
 
 	tag = argv[1];
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	g_hash_table_insert(params, g_strdup("tag"), g_strdup(tag));
 
 	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_RELEASE,
-	                             GCTL_VERB_GET, tag, params);
+	                             GCTL_VERB_GET, NULL, params);
 }
 
 /* ── release create ──────────────────────────────────────────────────── */
@@ -214,7 +215,7 @@ cmd_release_create(
 		                    g_strdup("true"));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_RELEASE,
-	                            GCTL_VERB_CREATE, tag, params);
+	                            GCTL_VERB_CREATE, NULL, params);
 
 	g_free(tag);
 	g_free(title);
@@ -253,9 +254,10 @@ cmd_release_delete(
 
 	tag = argv[1];
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	g_hash_table_insert(params, g_strdup("tag"), g_strdup(tag));
 
 	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_RELEASE,
-	                             GCTL_VERB_DELETE, tag, params);
+	                             GCTL_VERB_DELETE, NULL, params);
 }
 
 /* ── Main entry point ────────────────────────────────────────────────── */

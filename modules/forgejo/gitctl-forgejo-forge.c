@@ -194,6 +194,32 @@ start_fj_argv(GctlForgeContext *context, const gchar *noun)
 	return argv;
 }
 
+/**
+ * append_fj_repo_flag:
+ * @argv: the argument vector being built
+ * @context: (nullable): the forge context
+ *
+ * Appends `--repo owner/repo` to @argv when the context has both
+ * owner and repo_name set.  This ensures `fj` targets the correct
+ * repository even when the command is not run from inside the repo
+ * directory.
+ */
+static void
+append_fj_repo_flag(
+	GPtrArray        *argv,
+	GctlForgeContext *context
+)
+{
+	if (context != NULL &&
+	    gctl_forge_context_get_owner(context) != NULL &&
+	    gctl_forge_context_get_repo_name(context) != NULL)
+	{
+		g_autofree gchar *slug = gctl_forge_context_get_owner_repo(context);
+		g_ptr_array_add(argv, g_strdup("--repo"));
+		g_ptr_array_add(argv, g_strdup(slug));
+	}
+}
+
 static void
 set_unsupported(GError **error, GctlResourceKind resource, GctlVerb verb)
 {
@@ -416,6 +442,7 @@ build_pr_argv(
 		return NULL;
 	}
 
+	append_fj_repo_flag(argv, context);
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
@@ -535,6 +562,7 @@ build_issue_argv(
 		return NULL;
 	}
 
+	append_fj_repo_flag(argv, context);
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
@@ -878,6 +906,7 @@ build_release_argv(
 		return NULL;
 	}
 
+	append_fj_repo_flag(argv, context);
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }

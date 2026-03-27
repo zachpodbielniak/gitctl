@@ -48,7 +48,7 @@ print_bash_completion(void)
         "    local flags_merge=\"--method --help\"\n"
         "    local flags_comment=\"--body --help\"\n"
         "    local flags_review=\"--approve --request-changes --comment --body --help\"\n"
-        "    local flags_add=\"--url --direction --interval --sync-on-commit --token --username --create-repo --help\"\n"
+        "    local flags_add=\"--url --direction --interval --sync-on-commit --token --username --create-repo --no-create-repo --help\"\n"
         "    local flags_migrate=\"--to --name --private --include --service --token --mirror --mirror-back --mirror-to --token-github --token-gitlab --token-forgejo --token-gitea --help\"\n"
         "\n"
         "    local output_formats=\"table json yaml csv\"\n"

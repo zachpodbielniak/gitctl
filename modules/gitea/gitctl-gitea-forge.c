@@ -160,6 +160,32 @@ get_param(GHashTable *params, const gchar *key)
 	return (const gchar *)g_hash_table_lookup(params, key);
 }
 
+/**
+ * append_tea_repo_flag:
+ * @argv: the argument vector being built
+ * @context: (nullable): the forge context
+ *
+ * Appends `--repo owner/repo` to @argv when the context has both
+ * owner and repo_name set.  This ensures `tea` targets the correct
+ * repository even when the command is not run from inside the repo
+ * directory.
+ */
+static void
+append_tea_repo_flag(
+	GPtrArray        *argv,
+	GctlForgeContext *context
+)
+{
+	if (context != NULL &&
+	    gctl_forge_context_get_owner(context) != NULL &&
+	    gctl_forge_context_get_repo_name(context) != NULL)
+	{
+		g_autofree gchar *slug = gctl_forge_context_get_owner_repo(context);
+		g_ptr_array_add(argv, g_strdup("--repo"));
+		g_ptr_array_add(argv, g_strdup(slug));
+	}
+}
+
 static void
 set_unsupported(GError **error, GctlResourceKind resource, GctlVerb verb)
 {
@@ -420,6 +446,7 @@ build_pulls_argv(
 		return NULL;
 	}
 
+	append_tea_repo_flag(argv, context);
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
@@ -571,6 +598,7 @@ build_issues_argv(
 		return NULL;
 	}
 
+	append_tea_repo_flag(argv, context);
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
@@ -899,6 +927,7 @@ build_releases_argv(
 		return NULL;
 	}
 
+	append_tea_repo_flag(argv, context);
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }
@@ -1061,6 +1090,7 @@ build_labels_argv(
 		return NULL;
 	}
 
+	append_tea_repo_flag(argv, context);
 	g_ptr_array_add(argv, NULL);
 	return (gchar **)g_ptr_array_free(g_steal_pointer(&argv), FALSE);
 }

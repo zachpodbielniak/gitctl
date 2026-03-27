@@ -477,7 +477,7 @@ cmd_pr_merge(
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
 	if (method != NULL)
-		g_hash_table_insert(params, g_strdup("method"), g_strdup(method));
+		g_hash_table_insert(params, g_strdup("strategy"), g_strdup(method));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_PR,
 	                            GCTL_VERB_MERGE, pr_number, params);
