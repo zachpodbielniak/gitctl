@@ -62,10 +62,10 @@ $(OUTDIR)/$(LIB_SHARED_FULL): $(LIB_OBJS) $(DEP_OBJS)
 	cd $(OUTDIR) && ln -sf $(LIB_SHARED_FULL) $(LIB_SHARED_MAJOR)
 	cd $(OUTDIR) && ln -sf $(LIB_SHARED_MAJOR) $(LIB_SHARED)
 
-# ── Executable ───────────────────────────────────────────────────────
+# ── Executable (statically links libgitctl + deps) ───────────────────
 
-$(OUTDIR)/gitctl: $(MAIN_OBJ) $(OUTDIR)/$(LIB_SHARED_FULL)
-	$(CC) -o $@ $(MAIN_OBJ) -L$(OUTDIR) -l$(LIB_NAME) $(LDFLAGS) -Wl,-rpath,'$$ORIGIN'
+$(OUTDIR)/gitctl: $(MAIN_OBJ) $(OUTDIR)/$(LIB_STATIC)
+	$(CC) -o $@ $(MAIN_OBJ) $(OUTDIR)/$(LIB_STATIC) $(LDFLAGS)
 
 # ── GIR generation ───────────────────────────────────────────────────
 
