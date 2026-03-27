@@ -1675,11 +1675,21 @@ cmd_repo_migrate(
 
 		/*
 		 * Post-migrate: set up push mirror from destination back
-		 * to the source (--mirror-back)
+		 * to the source (--mirror-back).
+		 *
+		 * Unlike --mirror-to, we do NOT create the source repo
+		 * (it already exists — that's where we migrated from).
+		 * We only add the push mirror on the NEW dest repo.
 		 */
 		if (ret == 0 && opt_migrate_mirror_back)
 		{
 			g_autoptr(GctlForgeContext) new_dest_context = NULL;
+			GctlForge *src_forge_mod;
+			g_autofree gchar *mirror_body = NULL;
+			g_autofree gchar *mirror_endpoint = NULL;
+			const gchar *mirror_username;
+			const gchar *mirror_token_val;
+			const gchar *env_tok = NULL;
 
 			if (verbose)
 				g_printerr("note: setting up push mirror "
@@ -1694,8 +1704,91 @@ cmd_repo_migrate(
 			    dest_host,
 			    dest_cli);
 
-			setup_mirror_to(app, source_url, new_dest_context,
-			               opt_migrate_sync_on_commit);
+			/* Auto-detect username/token for the source forge */
+			mirror_username = source_owner;
+
+			switch (source_forge_type) {
+			case GCTL_FORGE_TYPE_GITHUB:
+				env_tok = g_getenv("GITHUB_TOKEN");
+				break;
+			case GCTL_FORGE_TYPE_GITLAB:
+				env_tok = g_getenv("GITLAB_TOKEN");
+				break;
+			case GCTL_FORGE_TYPE_FORGEJO:
+				env_tok = g_getenv("FORGEJO_TOKEN");
+				break;
+			case GCTL_FORGE_TYPE_GITEA:
+				env_tok = g_getenv("GITEA_TOKEN");
+				break;
+			default:
+				break;
+			}
+			mirror_token_val = env_tok;
+
+			/* Build the push mirror body */
+			mirror_body = repo_build_push_mirror_body(
+			    dest_forge_type, source_url,
+			    mirror_username, mirror_token_val,
+			    "8h0m0s", opt_migrate_sync_on_commit,
+			    gctl_executor_get_dry_run(executor));
+
+			if (mirror_body != NULL)
+			{
+				g_autoptr(GError) mirror_err = NULL;
+				g_autoptr(GctlCommandResult) mirror_result = NULL;
+				gchar **mirror_argv;
+				const gchar *own;
+				const gchar *rname;
+
+				own = source_owner;
+				rname = repo_name;
+				if (own == NULL || *own == '\0')
+					own = g_getenv("GITCTL_USER");
+
+				if (own != NULL && rname != NULL)
+				{
+					mirror_endpoint = g_strdup_printf(
+					    "/repos/%s/%s/push_mirrors",
+					    own, rname);
+
+					src_forge_mod =
+					    gctl_module_manager_find_forge(
+					        mm, dest_forge_type);
+
+					if (src_forge_mod != NULL)
+					{
+						mirror_argv =
+						    gctl_forge_build_api_argv(
+						        src_forge_mod, "POST",
+						        mirror_endpoint,
+						        mirror_body,
+						        new_dest_context,
+						        &mirror_err);
+
+						if (mirror_argv != NULL)
+						{
+							mirror_result =
+							    gctl_executor_run(
+							        executor,
+							        (const gchar * const *)mirror_argv,
+							        &mirror_err);
+							g_strfreev(mirror_argv);
+						}
+					}
+				}
+
+				if (verbose)
+					g_printerr("note: push mirror back to "
+					           "%s configured\n",
+					           source_url);
+			}
+			else
+			{
+				g_printerr("warning: push mirrors not "
+				           "supported on %s\n",
+				           gctl_forge_type_to_string(
+				               dest_forge_type));
+			}
 		}
 
 		/*
