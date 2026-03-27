@@ -302,8 +302,10 @@ static gchar *
 repo_build_push_mirror_body(
 	GctlForgeType  forge_type,
 	const gchar   *url,
+	const gchar   *username,
 	const gchar   *token,
 	const gchar   *interval,
+	gboolean       sync_on_commit,
 	gboolean       mask_token
 ){
 	g_autoptr(JsonBuilder) builder = NULL;
@@ -321,6 +323,12 @@ repo_build_push_mirror_body(
 		json_builder_set_member_name(builder, "remote_address");
 		json_builder_add_string_value(builder, url);
 
+		if (username != NULL)
+		{
+			json_builder_set_member_name(builder, "remote_username");
+			json_builder_add_string_value(builder, username);
+		}
+
 		if (token != NULL)
 		{
 			json_builder_set_member_name(builder, "remote_password");
@@ -330,6 +338,9 @@ repo_build_push_mirror_body(
 
 		json_builder_set_member_name(builder, "interval");
 		json_builder_add_string_value(builder, interval);
+
+		json_builder_set_member_name(builder, "sync_on_commit");
+		json_builder_add_boolean_value(builder, sync_on_commit);
 
 		json_builder_set_member_name(builder, "sync_on_commit");
 		json_builder_add_boolean_value(builder, TRUE);
@@ -537,10 +548,44 @@ setup_mirror_to(
 		g_autoptr(GError) mirror_err = NULL;
 		g_autoptr(GctlCommandResult) mirror_result = NULL;
 		gchar **mirror_argv;
+		const gchar *mirror_username;
+		const gchar *mirror_token;
+		const gchar *env_token;
+
+		/*
+		 * Auto-detect username from the destination URL owner
+		 * and token from the destination forge's env var.
+		 * This matches the behavior of gitctl mirror add.
+		 */
+		mirror_username = dest_owner;
+
+		env_token = NULL;
+		switch (dest_forge_type) {
+		case GCTL_FORGE_TYPE_GITHUB:
+			env_token = g_getenv("GITHUB_TOKEN");
+			break;
+		case GCTL_FORGE_TYPE_GITLAB:
+			env_token = g_getenv("GITLAB_TOKEN");
+			break;
+		case GCTL_FORGE_TYPE_FORGEJO:
+			env_token = g_getenv("FORGEJO_TOKEN");
+			break;
+		case GCTL_FORGE_TYPE_GITEA:
+			env_token = g_getenv("GITEA_TOKEN");
+			break;
+		default:
+			break;
+		}
+
+		/* Use the per-forge token flag if available, else env var */
+		mirror_token = token;
+		if (mirror_token == NULL)
+			mirror_token = env_token;
 
 		body = repo_build_push_mirror_body(
-		    source_forge_type, mirror_url, token,
-		    "8h0m0s", is_dry_run);
+		    source_forge_type, mirror_url,
+		    mirror_username, mirror_token,
+		    "8h0m0s", TRUE, is_dry_run);
 
 		if (body == NULL)
 		{
