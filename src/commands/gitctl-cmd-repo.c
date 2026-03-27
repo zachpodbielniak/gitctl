@@ -342,9 +342,6 @@ repo_build_push_mirror_body(
 		json_builder_set_member_name(builder, "sync_on_commit");
 		json_builder_add_boolean_value(builder, sync_on_commit);
 
-		json_builder_set_member_name(builder, "sync_on_commit");
-		json_builder_add_boolean_value(builder, TRUE);
-
 		json_builder_end_object(builder);
 	}
 	else if (forge_type == GCTL_FORGE_TYPE_GITLAB)
@@ -402,6 +399,7 @@ get_token_for_forge(GctlForgeType forge_type)
  * @app: the #GctlApp instance
  * @mirror_url: the destination mirror URL
  * @source_context: the source forge context (the repo we just created)
+ * @sync_on_commit: whether to sync on every push
  *
  * Sets up a push mirror from the source repository to the destination
  * specified by @mirror_url.  This involves:
@@ -417,7 +415,8 @@ static void
 setup_mirror_to(
 	GctlApp          *app,
 	const gchar      *mirror_url,
-	GctlForgeContext *source_context
+	GctlForgeContext *source_context,
+	gboolean          sync_on_commit
 ){
 	GctlConfig *config;
 	GctlExecutor *executor;
@@ -585,7 +584,7 @@ setup_mirror_to(
 		body = repo_build_push_mirror_body(
 		    source_forge_type, mirror_url,
 		    mirror_username, mirror_token,
-		    "8h0m0s", TRUE, is_dry_run);
+		    "8h0m0s", sync_on_commit, is_dry_run);
 
 		if (body == NULL)
 		{
@@ -690,6 +689,7 @@ cmd_repo_create(
 	gboolean is_private = FALSE;
 	gchar *description = NULL;
 	gboolean clone_after = FALSE;
+	gboolean sync_on_commit = FALSE;
 	const gchar *repo_name;
 	gint ret;
 
@@ -709,6 +709,8 @@ cmd_repo_create(
 		  "Clone the repository after creating", NULL },
 		{ "mirror-to", 0, 0, G_OPTION_ARG_STRING_ARRAY, &opt_mirror_to,
 		  "Push mirror to this URL after creation (repeatable)", "URL" },
+		{ "sync-on-commit", 0, 0, G_OPTION_ARG_NONE, &sync_on_commit,
+		  "Sync mirrors on every push", NULL },
 		{ "token-github", 0, 0, G_OPTION_ARG_STRING, &opt_token_github,
 		  "GitHub token for mirror destination", "TOKEN" },
 		{ "token-gitlab", 0, 0, G_OPTION_ARG_STRING, &opt_token_gitlab,
@@ -795,7 +797,8 @@ cmd_repo_create(
 
 		for (m = 0; opt_mirror_to[m] != NULL; m++)
 		{
-			setup_mirror_to(app, opt_mirror_to[m], source_context);
+			setup_mirror_to(app, opt_mirror_to[m], source_context,
+			               sync_on_commit);
 		}
 	}
 
@@ -1171,6 +1174,7 @@ static gchar *opt_migrate_service = NULL;
 static gchar *opt_migrate_token_src = NULL;
 static gboolean opt_migrate_mirror = FALSE;
 static gboolean opt_migrate_mirror_back = FALSE;
+static gboolean opt_migrate_sync_on_commit = FALSE;
 static gchar **opt_migrate_mirror_to = NULL;
 
 /**
@@ -1249,6 +1253,7 @@ cmd_repo_migrate(
 	opt_migrate_token_src = NULL;
 	opt_migrate_mirror = FALSE;
 	opt_migrate_mirror_back = FALSE;
+	opt_migrate_sync_on_commit = FALSE;
 	opt_migrate_mirror_to = NULL;
 
 	GOptionEntry entries[] = {
@@ -1280,6 +1285,9 @@ cmd_repo_migrate(
 		  &opt_migrate_mirror_to,
 		  "Set up push mirror to this URL after migration (repeatable)",
 		  "URL" },
+		{ "sync-on-commit", 0, 0, G_OPTION_ARG_NONE,
+		  &opt_migrate_sync_on_commit,
+		  "Sync mirrors on every push", NULL },
 		{ "token-github", 0, 0, G_OPTION_ARG_STRING, &opt_token_github,
 		  "GitHub token for mirror destination", "TOKEN" },
 		{ "token-gitlab", 0, 0, G_OPTION_ARG_STRING, &opt_token_gitlab,
@@ -1654,7 +1662,8 @@ cmd_repo_migrate(
 			    dest_host,
 			    dest_cli);
 
-			setup_mirror_to(app, source_url, new_dest_context);
+			setup_mirror_to(app, source_url, new_dest_context,
+			               opt_migrate_sync_on_commit);
 		}
 
 		/*
@@ -1683,7 +1692,8 @@ cmd_repo_migrate(
 
 				setup_mirror_to(app,
 				                opt_migrate_mirror_to[m],
-				                new_dest_context);
+				                new_dest_context,
+				                opt_migrate_sync_on_commit);
 			}
 		}
 	}
