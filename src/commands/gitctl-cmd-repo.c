@@ -115,16 +115,93 @@ cmd_repo_list(
 	/*
 	 * Accept owner as a positional arg for convenience:
 	 *   gitctl repo list immutablue
-	 * is equivalent to:
-	 *   gitctl repo list --owner immutablue
+	 *   gitctl repo list https://gitlab.com/immutablue
+	 *   gitctl repo list https://git.podbielniak.com/zachpodbielniak
 	 *
-	 * After GOptionContext parsing, argv[0] is the verb name ("list")
-	 * which was already consumed by the dispatch.  Remaining positional
-	 * args start at argv[1].
+	 * If the arg looks like a URL (contains "://"), parse it to
+	 * extract the host and owner, and auto-detect the forge type.
+	 * This lets you browse any forge without --forge.
 	 */
 	if (owner == NULL && argc >= 2 && argv[1] != NULL &&
 	    argv[1][0] != '-')
-		owner = g_strdup(argv[1]);
+	{
+		const gchar *arg = argv[1];
+
+		if (strstr(arg, "://") != NULL)
+		{
+			g_autoptr(GUri) uri = NULL;
+			g_autoptr(GError) uri_err = NULL;
+
+			uri = g_uri_parse(arg, G_URI_FLAGS_NONE, &uri_err);
+			if (uri != NULL)
+			{
+				const gchar *host;
+				const gchar *path;
+
+				host = g_uri_get_host(uri);
+				path = g_uri_get_path(uri);
+
+				/* Extract owner from path: /owner or /owner/ */
+				if (path != NULL && *path == '/')
+					path++;
+				if (path != NULL && *path != '\0')
+				{
+					g_autofree gchar *path_copy = g_strdup(path);
+					gchar *slash;
+
+					/* Strip trailing slash */
+					slash = strrchr(path_copy, '/');
+					if (slash != NULL && *(slash + 1) == '\0')
+						*slash = '\0';
+
+					/* If path has a slash, take only the first segment
+					 * (the owner/org name) */
+					slash = strchr(path_copy, '/');
+					if (slash != NULL)
+						*slash = '\0';
+
+					owner = g_strdup(path_copy);
+				}
+
+				/*
+				 * Auto-detect forge from the host and force it
+				 * on the resolver so execute_verb targets the
+				 * right instance.
+				 */
+				if (host != NULL)
+				{
+					GctlConfig *cfg;
+					GctlForgeType url_ft;
+
+					cfg = gctl_app_get_config(app);
+					url_ft = gctl_config_get_forge_for_host(cfg, host);
+
+					if (url_ft != GCTL_FORGE_TYPE_UNKNOWN)
+					{
+						GctlContextResolver *res;
+
+						res = gctl_app_get_resolver(app);
+						gctl_context_resolver_set_forced_forge(
+							res, url_ft);
+					}
+					else
+					{
+						g_printerr("warning: unknown forge for "
+						           "host '%s'\n", host);
+					}
+				}
+			}
+			else
+			{
+				g_printerr("warning: could not parse URL '%s'\n",
+				           arg);
+			}
+		}
+		else
+		{
+			owner = g_strdup(arg);
+		}
+	}
 
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
