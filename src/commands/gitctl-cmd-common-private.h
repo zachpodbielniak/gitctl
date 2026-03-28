@@ -429,8 +429,9 @@ gctl_cmd_execute_verb(
 		return 1;
 	}
 
-	/* Set up a pager for LIST verbs when output goes to a TTY */
-	if (verb == GCTL_VERB_LIST)
+	/* Set up a pager only when explicitly requested via params */
+	if (params != NULL &&
+	    g_hash_table_lookup(params, "pager") != NULL)
 		gctl_cmd_setup_pager();
 
 	/* Step 2: Resolve forge context from git remote */

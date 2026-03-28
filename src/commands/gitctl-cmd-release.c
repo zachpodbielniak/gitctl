@@ -64,10 +64,13 @@ cmd_release_list(
 	g_autoptr(GHashTable) params = NULL;
 	g_autoptr(GError) error = NULL;
 	gint limit = 30;
+	gboolean use_pager = FALSE;
 
 	GOptionEntry entries[] = {
 		{ "limit", 'l', 0, G_OPTION_ARG_INT, &limit,
 		  "Maximum number of results (default: 30)", "N" },
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
 		{ NULL }
 	};
 
@@ -88,6 +91,9 @@ cmd_release_list(
 		limit_str = g_strdup_printf("%d", limit);
 		g_hash_table_insert(params, g_strdup("limit"), limit_str);
 	}
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_RELEASE,
 	                             GCTL_VERB_LIST, NULL, params);

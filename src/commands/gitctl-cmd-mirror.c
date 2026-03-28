@@ -271,8 +271,11 @@ cmd_mirror_list(
 	g_autoptr(GOptionContext) opt_context = NULL;
 	g_autoptr(GHashTable) params = NULL;
 	g_autoptr(GError) error = NULL;
+	gboolean use_pager = FALSE;
 
 	GOptionEntry entries[] = {
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
 		{ NULL }
 	};
 
@@ -286,6 +289,9 @@ cmd_mirror_list(
 	}
 
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_MIRROR,
 	                             GCTL_VERB_LIST, NULL, params);

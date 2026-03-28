@@ -82,6 +82,7 @@ cmd_repo_list(
 	gchar *language = NULL;
 	gchar *topic = NULL;
 	gchar *sort = NULL;
+	gboolean use_pager = FALSE;
 	gint ret;
 
 	GOptionEntry entries[] = {
@@ -97,6 +98,8 @@ cmd_repo_list(
 		  "Filter by topic/tag", "TOPIC" },
 		{ "sort", 's', 0, G_OPTION_ARG_STRING, &sort,
 		  "Sort by: name, created, updated, stars", "FIELD" },
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
 		{ NULL }
 	};
 
@@ -147,6 +150,9 @@ cmd_repo_list(
 	if (sort != NULL)
 		g_hash_table_insert(params, g_strdup("sort"),
 		                    g_strdup(sort));
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
 	                            GCTL_VERB_LIST, NULL, params);

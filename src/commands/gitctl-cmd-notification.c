@@ -67,11 +67,14 @@ cmd_notification_list(
 	g_autoptr(GHashTable) params = NULL;
 	g_autoptr(GError) error = NULL;
 	gboolean unread = TRUE;
+	gboolean use_pager = FALSE;
 	gint ret;
 
 	GOptionEntry entries[] = {
 		{ "unread", 'u', 0, G_OPTION_ARG_NONE, &unread,
 		  "Show only unread notifications (default)", NULL },
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
 		{ NULL }
 	};
 
@@ -88,6 +91,9 @@ cmd_notification_list(
 
 	if (unread)
 		g_hash_table_insert(params, g_strdup("unread"), g_strdup("true"));
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_NOTIFICATION,
 	                            GCTL_VERB_LIST, NULL, params);

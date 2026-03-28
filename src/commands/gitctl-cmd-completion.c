@@ -41,7 +41,7 @@ print_bash_completion(void)
         "    local verbs_key=\"list add remove\"\n"
         "    local verbs_webhook=\"list create delete get\"\n"
         "\n"
-        "    local flags_list=\"--state --limit --author --label --assignee --help\"\n"
+        "    local flags_list=\"--state --limit --author --label --assignee --pager --help\"\n"
         "    local flags_get=\"--help\"\n"
         "    local flags_create=\"--title --body --description --base --head --draft --private --help\"\n"
         "    local flags_edit=\"--title --body --assignee --label --help\"\n"

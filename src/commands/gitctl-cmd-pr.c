@@ -79,6 +79,7 @@ cmd_pr_list(
 	gchar *author = NULL;
 	gchar *label = NULL;
 	gchar *assignee = NULL;
+	gboolean use_pager = FALSE;
 	gint ret;
 
 	GOptionEntry entries[] = {
@@ -92,6 +93,8 @@ cmd_pr_list(
 		  "Filter by label", "LABEL" },
 		{ "assignee", 'A', 0, G_OPTION_ARG_STRING, &assignee,
 		  "Filter by assignee", "USER" },
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
 		{ NULL }
 	};
 
@@ -127,6 +130,9 @@ cmd_pr_list(
 
 	if (assignee != NULL)
 		g_hash_table_insert(params, g_strdup("assignee"), g_strdup(assignee));
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_PR,
 	                            GCTL_VERB_LIST, NULL, params);

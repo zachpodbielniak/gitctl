@@ -68,6 +68,7 @@ cmd_ci_list(
 	g_autoptr(GError) error = NULL;
 	gint limit = 20;
 	gchar *state = NULL;
+	gboolean use_pager = FALSE;
 	gint ret;
 
 	GOptionEntry entries[] = {
@@ -75,6 +76,8 @@ cmd_ci_list(
 		  "Maximum number of results (default: 20)", "N" },
 		{ "state", 's', 0, G_OPTION_ARG_STRING, &state,
 		  "Filter by state (success/failure/running/all)", "STATE" },
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
 		{ NULL }
 	};
 
@@ -98,6 +101,9 @@ cmd_ci_list(
 
 	if (state != NULL)
 		g_hash_table_insert(params, g_strdup("state"), g_strdup(state));
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_CI,
 	                            GCTL_VERB_LIST, NULL, params);

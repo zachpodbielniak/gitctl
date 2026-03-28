@@ -66,10 +66,12 @@ cmd_commit_list(
 ){
 	GctlExecutor *executor;
 	g_autoptr(GOptionContext) opt_context = NULL;
+	g_autoptr(GHashTable) params = NULL;
 	g_autoptr(GError) error = NULL;
 	g_autoptr(GctlCommandResult) result = NULL;
 	gint limit = 20;
 	gchar *branch = NULL;
+	gboolean use_pager = FALSE;
 	g_autofree gchar *limit_str = NULL;
 	const gchar *stdout_text;
 
@@ -78,6 +80,8 @@ cmd_commit_list(
 		  "Maximum number of commits (default: 20)", "N" },
 		{ "branch", 'b', 0, G_OPTION_ARG_STRING, &branch,
 		  "Branch to list commits from", "BRANCH" },
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
 		{ NULL }
 	};
 
@@ -89,6 +93,11 @@ cmd_commit_list(
 		g_printerr("error: %s\n", error->message);
 		return 1;
 	}
+
+	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	executor = gctl_app_get_executor(app);
 	if (executor == NULL)

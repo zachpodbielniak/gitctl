@@ -63,12 +63,30 @@ cmd_webhook_list(
 	gint      argc,
 	gchar   **argv
 ){
+	g_autoptr(GOptionContext) opt_context = NULL;
 	g_autoptr(GHashTable) params = NULL;
+	g_autoptr(GError) error = NULL;
+	gboolean use_pager = FALSE;
 
-	(void)argc;
-	(void)argv;
+	GOptionEntry entries[] = {
+		{ "pager", 0, 0, G_OPTION_ARG_NONE, &use_pager,
+		  "Pipe output through $PAGER", NULL },
+		{ NULL }
+	};
+
+	opt_context = g_option_context_new("- list webhooks");
+	g_option_context_add_main_entries(opt_context, entries, NULL);
+
+	if (!g_option_context_parse(opt_context, &argc, &argv, &error))
+	{
+		g_printerr("error: %s\n", error->message);
+		return 1;
+	}
 
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+	if (use_pager)
+		g_hash_table_insert(params, g_strdup("pager"), g_strdup("true"));
 
 	return gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_WEBHOOK,
 	                             GCTL_VERB_LIST, NULL, params);
