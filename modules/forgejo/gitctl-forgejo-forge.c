@@ -594,10 +594,58 @@ build_repo_argv(
 	argv = start_fj_argv(context, "repo");
 
 	switch (verb) {
-	case GCTL_VERB_LIST:
-		/* fj has no 'repo list' or 'repo search' — fall through to API */
-		set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
-		return NULL;
+	case GCTL_VERB_LIST: {
+		/*
+		 * fj has no repo list — use the API directly.
+		 * /user/repos for self, /users/{owner}/repos or
+		 * /orgs/{owner}/repos for others.  We try /users/ first
+		 * (the Gitea API returns repos for both users and orgs
+		 * from this endpoint).
+		 */
+		const gchar *host;
+		const gchar *forgejo_token;
+		const gchar *owner;
+		g_autofree gchar *endpoint = NULL;
+
+		host = (context != NULL)
+			? gctl_forge_context_get_host(context) : NULL;
+		forgejo_token = g_getenv("FORGEJO_TOKEN");
+		if (forgejo_token == NULL)
+			forgejo_token = g_getenv("GITEA_TOKEN");
+
+		owner = get_param(params, "owner");
+		if (owner != NULL)
+			endpoint = g_strdup_printf(
+				"https://%s/api/v1/users/%s/repos",
+				host ? host : "localhost", owner);
+		else
+			endpoint = g_strdup_printf(
+				"https://%s/api/v1/user/repos",
+				host ? host : "localhost");
+
+		g_ptr_array_set_size(argv, 0);
+		g_ptr_array_add(argv, g_strdup("curl"));
+		g_ptr_array_add(argv, g_strdup("-s"));
+		g_ptr_array_add(argv, g_strdup("-S"));
+		g_ptr_array_add(argv, g_strdup("-H"));
+		g_ptr_array_add(argv, g_strdup("Accept: application/json"));
+		if (forgejo_token != NULL) {
+			g_ptr_array_add(argv, g_strdup("-H"));
+			g_ptr_array_add(argv, g_strdup_printf(
+				"Authorization: token %s", forgejo_token));
+		}
+
+		val = get_param(params, "limit");
+		if (val != NULL) {
+			g_autofree gchar *url_with_limit = NULL;
+			url_with_limit = g_strdup_printf(
+				"%s?limit=%s", endpoint, val);
+			g_ptr_array_add(argv, g_strdup(url_with_limit));
+		} else {
+			g_ptr_array_add(argv, g_strdup(endpoint));
+		}
+		break;
+	}
 
 	case GCTL_VERB_GET:
 		/* fj repo view has no --json flag — fall through to API */

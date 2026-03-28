@@ -680,9 +680,28 @@ build_repo_argv(
 	case GCTL_VERB_LIST:
 		g_ptr_array_add(argv, g_strdup("list"));
 
+		/*
+		 * glab repo list: --group for orgs/users, --mine for self.
+		 * --include-subgroups so nested groups are shown.
+		 */
+		val = get_param(params, "owner");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--group"));
+			g_ptr_array_add(argv, g_strdup(val));
+			g_ptr_array_add(argv, g_strdup("--include-subgroups"));
+		} else {
+			g_ptr_array_add(argv, g_strdup("--mine"));
+		}
+
 		val = get_param(params, "limit");
 		if (val != NULL) {
 			g_ptr_array_add(argv, g_strdup("--per-page"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "sort");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--order"));
 			g_ptr_array_add(argv, g_strdup(val));
 		}
 

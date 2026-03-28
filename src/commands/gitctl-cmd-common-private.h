@@ -512,6 +512,24 @@ gctl_cmd_execute_verb(
 			endpoint = gctl_cmd_expand_endpoint(
 			    fallback->endpoint, context, params);
 
+			/*
+			 * Repo list: override endpoint when owner is set.
+			 * /user/repos is self-only; need /users/{owner}/repos.
+			 */
+			if (kind == GCTL_RESOURCE_KIND_REPO &&
+			    verb == GCTL_VERB_LIST && params != NULL)
+			{
+				const gchar *owner_val;
+
+				owner_val = (const gchar *)g_hash_table_lookup(
+					params, "owner");
+				if (owner_val != NULL) {
+					g_free(endpoint);
+					endpoint = g_strdup_printf(
+						"/users/%s/repos", owner_val);
+				}
+			}
+
 			/* Check for an explicit JSON body in params */
 			if (params != NULL)
 				body_str = (const gchar *)g_hash_table_lookup(params, "body");

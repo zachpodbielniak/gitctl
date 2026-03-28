@@ -78,17 +78,29 @@ cmd_repo_list(
 	g_autoptr(GError) error = NULL;
 	gint limit = 30;
 	gchar *visibility = NULL;
+	gchar *owner = NULL;
+	gchar *language = NULL;
+	gchar *topic = NULL;
+	gchar *sort = NULL;
 	gint ret;
 
 	GOptionEntry entries[] = {
 		{ "limit", 'l', 0, G_OPTION_ARG_INT, &limit,
 		  "Maximum number of results (default: 30)", "N" },
-		{ "visibility", 'v', 0, G_OPTION_ARG_STRING, &visibility,
+		{ "visibility", 0, 0, G_OPTION_ARG_STRING, &visibility,
 		  "Filter by visibility (public/private/all)", "VIS" },
+		{ "owner", 'O', 0, G_OPTION_ARG_STRING, &owner,
+		  "List repos for a user or organization", "OWNER" },
+		{ "language", 'L', 0, G_OPTION_ARG_STRING, &language,
+		  "Filter by programming language", "LANG" },
+		{ "topic", 0, 0, G_OPTION_ARG_STRING, &topic,
+		  "Filter by topic/tag", "TOPIC" },
+		{ "sort", 's', 0, G_OPTION_ARG_STRING, &sort,
+		  "Sort by: name, created, updated, stars", "FIELD" },
 		{ NULL }
 	};
 
-	opt_context = g_option_context_new("- list repositories");
+	opt_context = g_option_context_new("[owner] - list repositories");
 	g_option_context_add_main_entries(opt_context, entries, NULL);
 
 	if (!g_option_context_parse(opt_context, &argc, &argv, &error))
@@ -96,6 +108,20 @@ cmd_repo_list(
 		g_printerr("error: %s\n", error->message);
 		return 1;
 	}
+
+	/*
+	 * Accept owner as a positional arg for convenience:
+	 *   gitctl repo list immutablue
+	 * is equivalent to:
+	 *   gitctl repo list --owner immutablue
+	 *
+	 * After GOptionContext parsing, argv[0] is the verb name ("list")
+	 * which was already consumed by the dispatch.  Remaining positional
+	 * args start at argv[1].
+	 */
+	if (owner == NULL && argc >= 2 && argv[1] != NULL &&
+	    argv[1][0] != '-')
+		owner = g_strdup(argv[1]);
 
 	params = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
@@ -109,11 +135,27 @@ cmd_repo_list(
 	if (visibility != NULL)
 		g_hash_table_insert(params, g_strdup("visibility"),
 		                    g_strdup(visibility));
+	if (owner != NULL)
+		g_hash_table_insert(params, g_strdup("owner"),
+		                    g_strdup(owner));
+	if (language != NULL)
+		g_hash_table_insert(params, g_strdup("language"),
+		                    g_strdup(language));
+	if (topic != NULL)
+		g_hash_table_insert(params, g_strdup("topic"),
+		                    g_strdup(topic));
+	if (sort != NULL)
+		g_hash_table_insert(params, g_strdup("sort"),
+		                    g_strdup(sort));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
 	                            GCTL_VERB_LIST, NULL, params);
 
 	g_free(visibility);
+	g_free(owner);
+	g_free(language);
+	g_free(topic);
+	g_free(sort);
 
 	return ret;
 }

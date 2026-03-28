@@ -633,6 +633,16 @@ build_repos_argv(
 
 	switch (verb) {
 	case GCTL_VERB_LIST:
+		/*
+		 * tea repos list only shows your own repos.  For another
+		 * user/org, use the API: /users/{owner}/repos.
+		 */
+		val = get_param(params, "owner");
+		if (val != NULL) {
+			set_unsupported(error, GCTL_RESOURCE_KIND_REPO, verb);
+			return NULL;
+		}
+
 		g_ptr_array_add(argv, g_strdup("tea"));
 		g_ptr_array_add(argv, g_strdup("repos"));
 		g_ptr_array_add(argv, g_strdup("list"));

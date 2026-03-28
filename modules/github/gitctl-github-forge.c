@@ -709,6 +709,11 @@ build_repo_argv(
 	case GCTL_VERB_LIST:
 		g_ptr_array_add(argv, g_strdup("list"));
 
+		/* gh repo list [owner] — positional arg for user/org */
+		val = get_param(params, "owner");
+		if (val != NULL)
+			g_ptr_array_add(argv, g_strdup(val));
+
 		g_ptr_array_add(argv, g_strdup("--json"));
 		g_ptr_array_add(argv, g_strdup(
 			"name,description,visibility,url"
@@ -717,6 +722,24 @@ build_repo_argv(
 		val = get_param(params, "limit");
 		if (val != NULL) {
 			g_ptr_array_add(argv, g_strdup("--limit"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "language");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--language"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "topic");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--topic"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
+		val = get_param(params, "visibility");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--visibility"));
 			g_ptr_array_add(argv, g_strdup(val));
 		}
 		break;
