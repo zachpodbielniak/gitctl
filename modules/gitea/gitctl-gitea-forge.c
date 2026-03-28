@@ -781,6 +781,12 @@ build_repos_argv(
 			g_ptr_array_add(argv, g_strdup(val));
 		}
 
+		val = get_param(params, "repo_owner");
+		if (val != NULL) {
+			g_ptr_array_add(argv, g_strdup("--owner"));
+			g_ptr_array_add(argv, g_strdup(val));
+		}
+
 		/* tea uses individual flags instead of --include */
 		val = get_param(params, "include");
 		if (val != NULL) {

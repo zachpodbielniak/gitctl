@@ -719,6 +719,13 @@ build_repo_argv(
 			if (name != NULL)
 				g_string_append_printf(body,
 					",\"repo_name\":\"%s\"", name);
+			{
+				const gchar *owner;
+				owner = get_param(params, "repo_owner");
+				if (owner != NULL)
+					g_string_append_printf(body,
+						",\"repo_owner\":\"%s\"", owner);
+			}
 			g_string_append_printf(body,
 				",\"auth_token\":\"%s\"", val);
 			if (service != NULL)

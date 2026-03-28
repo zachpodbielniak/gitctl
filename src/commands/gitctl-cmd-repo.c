@@ -1200,6 +1200,7 @@ cmd_repo_unstar(
 /* Static option variables for the migrate verb */
 static gchar *opt_migrate_to_forge = NULL;
 static gchar *opt_migrate_name = NULL;
+static gchar *opt_migrate_owner = NULL;
 static gboolean opt_migrate_private = FALSE;
 static gchar *opt_migrate_include = NULL;
 static gchar *opt_migrate_service = NULL;
@@ -1279,6 +1280,7 @@ cmd_repo_migrate(
 	/* Reset statics for safety */
 	opt_migrate_to_forge = NULL;
 	opt_migrate_name = NULL;
+	opt_migrate_owner = NULL;
 	opt_migrate_private = FALSE;
 	opt_migrate_include = NULL;
 	opt_migrate_service = NULL;
@@ -1295,6 +1297,9 @@ cmd_repo_migrate(
 		{ "name", 'n', 0, G_OPTION_ARG_STRING, &opt_migrate_name,
 		  "Repository name on destination (default: source repo name)",
 		  "NAME" },
+		{ "owner", 'o', 0, G_OPTION_ARG_STRING, &opt_migrate_owner,
+		  "Owner on destination (default: source owner / authenticated user)",
+		  "OWNER" },
 		{ "private", 'p', 0, G_OPTION_ARG_NONE, &opt_migrate_private,
 		  "Create as private repository", NULL },
 		{ "include", 'i', 0, G_OPTION_ARG_STRING, &opt_migrate_include,
@@ -1412,6 +1417,14 @@ cmd_repo_migrate(
 		goto cleanup;
 	}
 
+	/*
+	 * Determine the owner on the destination.  Defaults to the
+	 * source URL's owner, which preserves org-to-org migrations.
+	 * Override with --owner if the destination org is different.
+	 */
+	if (opt_migrate_owner == NULL)
+		opt_migrate_owner = g_strdup(source_owner);
+
 	/* Detect source forge type from the hostname in config */
 	source_forge_type = gctl_config_get_forge_for_host(config,
 	                                                   source_host);
@@ -1449,6 +1462,10 @@ cmd_repo_migrate(
 	                    g_strdup(source_url));
 	g_hash_table_insert(params, g_strdup("name"),
 	                    g_strdup(repo_name));
+
+	if (opt_migrate_owner != NULL)
+		g_hash_table_insert(params, g_strdup("repo_owner"),
+		                    g_strdup(opt_migrate_owner));
 
 	if (opt_migrate_private)
 		g_hash_table_insert(params, g_strdup("private"),
@@ -1826,6 +1843,7 @@ cmd_repo_migrate(
 cleanup:
 	g_free(opt_migrate_to_forge);
 	g_free(opt_migrate_name);
+	g_free(opt_migrate_owner);
 	g_free(opt_migrate_include);
 	g_free(opt_migrate_service);
 	g_free(opt_migrate_token_src);
