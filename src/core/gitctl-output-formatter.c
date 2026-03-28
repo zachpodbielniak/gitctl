@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/ioctl.h>
 
 /* ── Private structure ────────────────────────────────────────────── */
 
@@ -468,6 +469,22 @@ get_resource_field(
  *
  * Returns: (transfer full): the table string
  */
+/*
+ * get_terminal_width:
+ *
+ * Returns the terminal width in columns, or 80 as a fallback.
+ */
+static guint
+get_terminal_width(void)
+{
+	struct winsize ws;
+
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+		return (guint)ws.ws_col;
+
+	return 80;
+}
+
 static gchar *
 format_as_table(
 	GctlOutputFormatter  *self,
@@ -480,6 +497,9 @@ format_as_table(
 	guint i;
 	guint j;
 	GctlResourceKind kind;
+	guint term_width;
+	guint total_width;
+	guint spacing;
 
 	if (resources->len == 0)
 		return g_strdup("(no results)\n");
@@ -488,7 +508,7 @@ format_as_table(
 	kind    = gctl_resource_get_kind((GctlResource *)g_ptr_array_index(resources, 0));
 	headers = get_columns_for_kind(kind, &n_cols);
 
-	/* Calculate column widths */
+	/* Calculate natural column widths from data */
 	widths = g_new0(guint, n_cols);
 	for (j = 0; j < n_cols; j++)
 		widths[j] = (guint)strlen(headers[j]);
@@ -502,9 +522,53 @@ format_as_table(
 			guint len;
 
 			val = get_resource_field(res, kind, j);
-			len = (val != NULL) ? (guint)strlen(val) : 0;
+			len = (val != NULL) ? (guint)g_utf8_strlen(val, -1) : 0;
 			if (len > widths[j])
 				widths[j] = len;
+		}
+	}
+
+	/*
+	 * Fit columns to terminal width.  If the total width exceeds the
+	 * terminal, shrink the widest column (typically DESCRIPTION or
+	 * TITLE) to make everything fit.  The last column is never padded.
+	 */
+	term_width = get_terminal_width();
+	spacing = (n_cols > 1) ? 2 * (n_cols - 1) : 0;
+	total_width = spacing;
+	for (j = 0; j < n_cols; j++)
+		total_width += widths[j];
+
+	if (total_width > term_width && n_cols > 1)
+	{
+		guint overflow;
+		guint widest_col;
+		guint widest_val;
+
+		overflow = total_width - term_width;
+
+		/* Find the widest column */
+		widest_col = 0;
+		widest_val = 0;
+		for (j = 0; j < n_cols; j++) {
+			if (widths[j] > widest_val) {
+				widest_val = widths[j];
+				widest_col = j;
+			}
+		}
+
+		/* Shrink it, but keep at least the header length + 3 */
+		{
+			guint min_width;
+
+			min_width = (guint)strlen(headers[widest_col]);
+			if (min_width < 10)
+				min_width = 10;
+
+			if (widths[widest_col] > overflow + min_width)
+				widths[widest_col] -= overflow;
+			else
+				widths[widest_col] = min_width;
 		}
 	}
 
@@ -516,20 +580,12 @@ format_as_table(
 			g_string_append(buf, "  ");
 		if (self->colorize)
 			g_string_append(buf, ANSI_BOLD);
-		g_string_append_printf(buf, "%-*s", (gint)widths[j], headers[j]);
+		if (j == n_cols - 1)
+			g_string_append(buf, headers[j]);
+		else
+			g_string_append_printf(buf, "%-*s", (gint)widths[j], headers[j]);
 		if (self->colorize)
 			g_string_append(buf, ANSI_RESET);
-	}
-	g_string_append_c(buf, '\n');
-
-	/* Separator line */
-	for (j = 0; j < n_cols; j++) {
-		guint k;
-
-		if (j > 0)
-			g_string_append(buf, "  ");
-		for (k = 0; k < widths[j]; k++)
-			g_string_append_c(buf, '-');
 	}
 	g_string_append_c(buf, '\n');
 
@@ -540,10 +596,15 @@ format_as_table(
 		res = (GctlResource *)g_ptr_array_index(resources, i);
 		for (j = 0; j < n_cols; j++) {
 			const gchar *val;
+			guint val_len;
+			gboolean is_last;
 
 			val = get_resource_field(res, kind, j);
 			if (val == NULL)
 				val = "";
+
+			val_len = (guint)g_utf8_strlen(val, -1);
+			is_last = (j == n_cols - 1);
 
 			if (j > 0)
 				g_string_append(buf, "  ");
@@ -557,8 +618,24 @@ format_as_table(
 			     kind == GCTL_RESOURCE_KIND_ISSUE))
 			{
 				g_string_append(buf, state_color(val, self->colorize));
-				g_string_append_printf(buf, "%-*s", (gint)widths[j], val);
+				if (val_len > widths[j] && !is_last) {
+					g_string_append_len(buf, val, (gssize)(widths[j] - 1));
+					g_string_append_c(buf, '\xe2'); /* UTF-8 ellipsis */
+					g_string_append_c(buf, '\x80');
+					g_string_append_c(buf, '\xa6');
+				} else if (is_last) {
+					g_string_append(buf, val);
+				} else {
+					g_string_append_printf(buf, "%-*s", (gint)widths[j], val);
+				}
 				g_string_append(buf, reset_if_color(self->colorize));
+			} else if (val_len > widths[j] && !is_last) {
+				/* Truncate with ellipsis */
+				g_string_append_len(buf, val, (gssize)(widths[j] - 1));
+				g_string_append(buf, "\xe2\x80\xa6");
+			} else if (is_last) {
+				/* Last column: no padding */
+				g_string_append(buf, val);
 			} else {
 				g_string_append_printf(buf, "%-*s", (gint)widths[j], val);
 			}
