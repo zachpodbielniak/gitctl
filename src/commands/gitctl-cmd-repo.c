@@ -898,22 +898,21 @@ cmd_repo_create(
 		config = gctl_app_get_config(app);
 
 		/*
-		 * Build the source context directly from what we know:
-		 * the forge type (forced or default), the repo name we
-		 * just created, and GITCTL_USER for the owner.
-		 * Don't rely on git remote resolution since the repo
-		 * may not have a remote configured yet.
+		 * Build the source context for mirror setup.  We need the
+		 * owner (who the repo was created under) and the repo name.
 		 *
-		 * Use the resolved forge type from the execute_verb call
-		 * (which respects --forge).  We get it by re-resolving
-		 * from the context resolver which has the forced_forge set.
+		 * Try these sources in order:
+		 * 1. -R owner/repo flag (resolver's forced_repo)
+		 * 2. Owner from the first --mirror-to URL (common case:
+		 *    same owner across forges)
+		 * 3. GITCTL_USER env var
 		 */
 		{
 			GctlContextResolver *res;
 			GctlForgeType ft;
 			const gchar *host;
 			const gchar *cli;
-			const gchar *owner;
+			g_autofree gchar *owner = NULL;
 
 			res = gctl_app_get_resolver(app);
 			ft = gctl_context_resolver_get_forced_forge(res);
@@ -921,7 +920,49 @@ cmd_repo_create(
 				ft = gctl_config_get_default_forge(config);
 			host = gctl_config_get_default_host(config, ft);
 			cli = gctl_config_get_cli_path(config, ft);
-			owner = g_getenv("GITCTL_USER");
+
+			/* Try -R flag first */
+			{
+				g_autoptr(GctlForgeContext) tmp_ctx = NULL;
+				g_autoptr(GError) tmp_err = NULL;
+				const gchar *def_remote;
+
+				def_remote = gctl_config_get_default_remote(config);
+				tmp_ctx = gctl_context_resolver_resolve(
+				    res, def_remote, &tmp_err);
+				if (tmp_ctx != NULL) {
+					const gchar *resolved_owner;
+					resolved_owner = gctl_forge_context_get_owner(
+					    tmp_ctx);
+					if (resolved_owner != NULL &&
+					    *resolved_owner != '\0')
+						owner = g_strdup(resolved_owner);
+				}
+			}
+
+			/* Try first --mirror-to URL owner */
+			if (owner == NULL && opt_mirror_to != NULL &&
+			    opt_mirror_to[0] != NULL)
+			{
+				g_autofree gchar *mhost = NULL;
+				g_autofree gchar *mowner = NULL;
+				g_autofree gchar *mrepo = NULL;
+
+				if (repo_parse_mirror_url(opt_mirror_to[0],
+				    &mhost, &mowner, &mrepo))
+				{
+					if (mowner != NULL && *mowner != '\0')
+						owner = g_strdup(mowner);
+				}
+			}
+
+			/* Try GITCTL_USER env var */
+			if (owner == NULL) {
+				const gchar *env_user;
+				env_user = g_getenv("GITCTL_USER");
+				if (env_user != NULL)
+					owner = g_strdup(env_user);
+			}
 
 			source_context = gctl_forge_context_new(
 			    ft, NULL, owner, repo_name, host, cli);
