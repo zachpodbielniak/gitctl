@@ -703,6 +703,12 @@ format_as_json(GPtrArray *resources)
 				gctl_resource_get_author(res));
 		}
 
+		if (gctl_resource_get_description(res) != NULL) {
+			json_builder_set_member_name(builder, "description");
+			json_builder_add_string_value(builder,
+				gctl_resource_get_description(res));
+		}
+
 		if (gctl_resource_get_url(res) != NULL) {
 			json_builder_set_member_name(builder, "url");
 			json_builder_add_string_value(builder,

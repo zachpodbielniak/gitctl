@@ -1380,6 +1380,14 @@ parse_forgejo_repo(JsonObject *obj)
 	if (val != NULL)
 		gctl_resource_set_url(res, val);
 
+	val = json_object_get_string_safe(obj, "created_at");
+	if (val != NULL)
+		gctl_resource_set_created_at(res, val);
+
+	val = json_object_get_string_safe(obj, "updated_at");
+	if (val != NULL)
+		gctl_resource_set_updated_at(res, val);
+
 	return res;
 }
 
