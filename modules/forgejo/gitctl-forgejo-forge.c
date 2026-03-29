@@ -1442,6 +1442,63 @@ parse_forgejo_release(JsonObject *obj)
 	return res;
 }
 
+/**
+ * parse_forgejo_ci:
+ * @obj: a #JsonObject representing a Forgejo action run
+ *
+ * Returns: (transfer full): a newly allocated #GctlResource
+ */
+static GctlResource *
+parse_forgejo_ci(JsonObject *obj)
+{
+	GctlResource *res;
+	const gchar *val;
+
+	res = gctl_resource_new(GCTL_RESOURCE_KIND_CI);
+
+	if (json_object_has_member(obj, "id"))
+		gctl_resource_set_number(res,
+			(gint)json_object_get_int_member(obj, "id"));
+
+	val = json_object_get_string_safe(obj, "title");
+	if (val != NULL)
+		gctl_resource_set_title(res, val);
+
+	val = json_object_get_string_safe(obj, "status");
+	if (val != NULL)
+		gctl_resource_set_state(res, val);
+
+	val = json_object_get_string_safe(obj, "html_url");
+	if (val != NULL)
+		gctl_resource_set_url(res, val);
+
+	val = json_object_get_string_safe(obj, "created");
+	if (val == NULL)
+		val = json_object_get_string_safe(obj, "started");
+	if (val != NULL)
+		gctl_resource_set_created_at(res, val);
+
+	val = json_object_get_string_safe(obj, "updated");
+	if (val == NULL)
+		val = json_object_get_string_safe(obj, "stopped");
+	if (val != NULL)
+		gctl_resource_set_updated_at(res, val);
+
+	val = json_object_get_string_safe(obj, "trigger_event");
+	if (val != NULL)
+		gctl_resource_set_extra(res, "event", val);
+
+	val = json_object_get_string_safe(obj, "prettyref");
+	if (val != NULL)
+		gctl_resource_set_extra(res, "branch", val);
+
+	val = json_object_get_string_safe(obj, "commit_sha");
+	if (val != NULL)
+		gctl_resource_set_extra(res, "commit", val);
+
+	return res;
+}
+
 static GctlResource *
 parse_single_object(JsonObject *obj, GctlResourceKind resource)
 {
@@ -1457,6 +1514,9 @@ parse_single_object(JsonObject *obj, GctlResourceKind resource)
 
 	case GCTL_RESOURCE_KIND_RELEASE:
 		return parse_forgejo_release(obj);
+
+	case GCTL_RESOURCE_KIND_CI:
+		return parse_forgejo_ci(obj);
 
 	default:
 		return gctl_resource_new(resource);
@@ -1506,15 +1566,48 @@ forgejo_forge_parse_list_output(
 		return NULL;
 
 	root = json_parser_get_root(parser);
-	if (!JSON_NODE_HOLDS_ARRAY(root)) {
+
+	/*
+	 * API fallback responses wrap the array in an object, e.g.
+	 *   {"workflow_runs": [...], "total_count": N}
+	 * Unwrap by finding the first array member in the root object.
+	 */
+	if (JSON_NODE_HOLDS_OBJECT(root)) {
+		JsonObject *wrapper;
+		GList *members;
+		GList *it;
+
+		wrapper = json_node_get_object(root);
+		members = json_object_get_members(wrapper);
+		array = NULL;
+
+		for (it = members; it != NULL; it = it->next) {
+			JsonNode *child;
+
+			child = json_object_get_member(wrapper, (const gchar *)it->data);
+			if (child != NULL && JSON_NODE_HOLDS_ARRAY(child)) {
+				array = json_node_get_array(child);
+				break;
+			}
+		}
+		g_list_free(members);
+
+		if (array == NULL) {
+			g_set_error_literal(
+				error, GCTL_ERROR, GCTL_ERROR_PARSE_OUTPUT,
+				"Forgejo: no array found in API response object"
+			);
+			return NULL;
+		}
+	} else if (JSON_NODE_HOLDS_ARRAY(root)) {
+		array = json_node_get_array(root);
+	} else {
 		g_set_error_literal(
 			error, GCTL_ERROR, GCTL_ERROR_PARSE_OUTPUT,
 			"Forgejo: expected JSON array in list output"
 		);
 		return NULL;
 	}
-
-	array = json_node_get_array(root);
 	len = json_array_get_length(array);
 	results = g_ptr_array_new_with_free_func(
 		(GDestroyNotify)gctl_resource_free
