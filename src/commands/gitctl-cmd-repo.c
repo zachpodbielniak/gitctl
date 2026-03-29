@@ -1610,8 +1610,13 @@ cmd_repo_mass_migrate(
 	for (i = 0; i < total; i++)
 	{
 		GctlResource *r;
+		const gchar *vis;
+
 		r = (GctlResource *)g_ptr_array_index(repos, i);
-		g_printerr("  %s\n", gctl_resource_get_title(r));
+		vis = gctl_resource_get_state(r);
+		g_printerr("  %-30s %s\n",
+		           gctl_resource_get_title(r),
+		           vis ? vis : "");
 	}
 	g_printerr("\n");
 
@@ -1656,9 +1661,28 @@ cmd_repo_mass_migrate(
 		g_hash_table_insert(params, g_strdup("repo_owner"),
 		                    g_strdup(owner_on_dest));
 
-		if (opt_migrate_private)
+		/*
+		 * Preserve source repo visibility by default.
+		 * --private overrides all repos to private.
+		 * Otherwise, check the source resource's state field
+		 * which holds "private" or "public" from the list output.
+		 */
+		if (opt_migrate_private) {
 			g_hash_table_insert(params, g_strdup("private"),
 			                    g_strdup("true"));
+		} else {
+			const gchar *vis;
+
+			vis = gctl_resource_get_state(r);
+			if (vis != NULL &&
+			    (g_ascii_strcasecmp(vis, "private") == 0 ||
+			     g_ascii_strcasecmp(vis, "PRIVATE") == 0))
+			{
+				g_hash_table_insert(params, g_strdup("private"),
+				                    g_strdup("true"));
+			}
+			/* public repos: don't set "private" flag */
+		}
 		if (opt_migrate_mirror)
 			g_hash_table_insert(params, g_strdup("mirror"),
 			                    g_strdup("true"));
