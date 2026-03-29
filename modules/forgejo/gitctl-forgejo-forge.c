@@ -1025,6 +1025,62 @@ build_ci_argv(
 	GError            **error
 )
 {
+	/*
+	 * CI LOG: Forgejo exposes run logs via a web route, not the
+	 * REST API.  Build a curl command targeting:
+	 *   https://{host}/{owner}/{repo}/actions/runs/{number}/jobs/0/attempt/1/logs
+	 *
+	 * This returns plain text log output directly.
+	 */
+	if (verb == GCTL_VERB_LOG && context != NULL && params != NULL)
+	{
+		const gchar *host;
+		const gchar *owner;
+		const gchar *repo;
+		const gchar *number;
+		const gchar *token;
+		g_autofree gchar *url = NULL;
+		g_autoptr(GPtrArray) argv = NULL;
+
+		host   = gctl_forge_context_get_host(context);
+		owner  = gctl_forge_context_get_owner(context);
+		repo   = gctl_forge_context_get_repo_name(context);
+		number = (const gchar *)g_hash_table_lookup(params, "number");
+
+		if (host == NULL || owner == NULL ||
+		    repo == NULL || number == NULL)
+		{
+			g_set_error(error, GCTL_ERROR,
+			            GCTL_ERROR_INVALID_ARGS,
+			            "ci log requires host, owner, repo and run number");
+			return NULL;
+		}
+
+		url = g_strdup_printf(
+			"https://%s/%s/%s/actions/runs/%s/jobs/0/attempt/1/logs",
+			host, owner, repo, number);
+
+		argv = g_ptr_array_new_with_free_func(g_free);
+		g_ptr_array_add(argv, g_strdup("curl"));
+		g_ptr_array_add(argv, g_strdup("-s"));
+		g_ptr_array_add(argv, g_strdup("-S"));
+
+		token = g_getenv("FORGEJO_TOKEN");
+		if (token == NULL)
+			token = g_getenv("GITEA_TOKEN");
+		if (token != NULL) {
+			g_ptr_array_add(argv, g_strdup("-H"));
+			g_ptr_array_add(argv, g_strdup_printf(
+				"Authorization: token %s", token));
+		}
+
+		g_ptr_array_add(argv, g_strdup(url));
+		g_ptr_array_add(argv, NULL);
+
+		return (gchar **)g_ptr_array_free(
+			g_steal_pointer(&argv), FALSE);
+	}
+
 	set_unsupported(error, GCTL_RESOURCE_KIND_CI, verb);
 	return NULL;
 }
@@ -1456,7 +1512,20 @@ parse_forgejo_ci(JsonObject *obj)
 
 	res = gctl_resource_new(GCTL_RESOURCE_KIND_CI);
 
-	if (json_object_has_member(obj, "id"))
+	/*
+	 * Prefer the repo-scoped run index over the internal database ID.
+	 * The /actions/runs endpoint returns "index_in_repo" while the
+	 * /actions/tasks endpoint returns "run_number" — both represent
+	 * the same value used in web URLs (e.g. actions/runs/13).
+	 * Fall back to "id" if neither is present.
+	 */
+	if (json_object_has_member(obj, "index_in_repo"))
+		gctl_resource_set_number(res,
+			(gint)json_object_get_int_member(obj, "index_in_repo"));
+	else if (json_object_has_member(obj, "run_number"))
+		gctl_resource_set_number(res,
+			(gint)json_object_get_int_member(obj, "run_number"));
+	else if (json_object_has_member(obj, "id"))
 		gctl_resource_set_number(res,
 			(gint)json_object_get_int_member(obj, "id"));
 
