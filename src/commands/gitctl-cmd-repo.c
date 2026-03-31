@@ -532,6 +532,7 @@ get_token_for_forge(GctlForgeType forge_type)
  * @mirror_url: the destination mirror URL
  * @source_context: the source forge context (the repo we just created)
  * @sync_on_commit: whether to sync on every push
+ * @make_private: whether to create destination repos as private
  *
  * Sets up a push mirror from the source repository to the destination
  * specified by @mirror_url.  This involves:
@@ -548,7 +549,8 @@ setup_mirror_to(
 	GctlApp          *app,
 	const gchar      *mirror_url,
 	GctlForgeContext *source_context,
-	gboolean          sync_on_commit
+	gboolean          sync_on_commit,
+	gboolean          make_private
 ){
 	GctlConfig *config;
 	GctlExecutor *executor;
@@ -623,8 +625,9 @@ setup_mirror_to(
 		    g_str_hash, g_str_equal, g_free, g_free);
 		g_hash_table_insert(create_params,
 		                    g_strdup("name"), g_strdup(dest_repo));
-		g_hash_table_insert(create_params,
-		                    g_strdup("private"), g_strdup("true"));
+		if (make_private)
+			g_hash_table_insert(create_params,
+			    g_strdup("private"), g_strdup("true"));
 
 		if (verbose)
 			g_printerr("note: creating destination repo %s/%s on %s\n",
@@ -819,6 +822,7 @@ cmd_repo_create(
 	g_autoptr(GHashTable) params = NULL;
 	g_autoptr(GError) error = NULL;
 	gboolean is_private = FALSE;
+	gboolean is_public = FALSE;
 	gchar *description = NULL;
 	gchar *default_branch = NULL;
 	gboolean clone_after = FALSE;
@@ -837,6 +841,8 @@ cmd_repo_create(
 	GOptionEntry entries[] = {
 		{ "private", 'p', 0, G_OPTION_ARG_NONE, &is_private,
 		  "Create as private repository", NULL },
+		{ "public", 0, 0, G_OPTION_ARG_NONE, &is_public,
+		  "Create as public repository", NULL },
 		{ "description", 'd', 0, G_OPTION_ARG_STRING, &description,
 		  "Repository description", "DESC" },
 		{ "default-branch", 'b', 0, G_OPTION_ARG_STRING, &default_branch,
@@ -1082,7 +1088,7 @@ cmd_repo_create(
 		for (m = 0; opt_mirror_to[m] != NULL; m++)
 		{
 			setup_mirror_to(app, opt_mirror_to[m], source_context,
-			               sync_on_commit);
+			               sync_on_commit, is_private);
 		}
 	}
 
@@ -2161,7 +2167,8 @@ cmd_repo_mass_migrate(
 					           per_repo_url);
 
 				setup_mirror_to(app, per_repo_url, dest_ctx,
-				               opt_migrate_sync_on_commit);
+				               opt_migrate_sync_on_commit,
+				               opt_migrate_private);
 			}
 		}
 	}
@@ -2810,7 +2817,8 @@ cmd_repo_migrate(
 				setup_mirror_to(app,
 				                opt_migrate_mirror_to[m],
 				                new_dest_context,
-				                opt_migrate_sync_on_commit);
+				                opt_migrate_sync_on_commit,
+				                opt_migrate_private);
 			}
 		}
 	}
