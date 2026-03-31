@@ -821,6 +821,7 @@ cmd_repo_create(
 	gboolean is_private = FALSE;
 	gchar *description = NULL;
 	gboolean clone_after = FALSE;
+	gboolean clone_ssh = FALSE;
 	gboolean sync_on_commit = FALSE;
 	const gchar *repo_name;
 	gint ret;
@@ -838,7 +839,9 @@ cmd_repo_create(
 		{ "description", 'd', 0, G_OPTION_ARG_STRING, &description,
 		  "Repository description", "DESC" },
 		{ "clone", 'c', 0, G_OPTION_ARG_NONE, &clone_after,
-		  "Clone the repository after creating", NULL },
+		  "Clone the repo after creating (HTTPS)", NULL },
+		{ "clone-ssh", 0, 0, G_OPTION_ARG_NONE, &clone_ssh,
+		  "Clone the repo after creating (SSH)", NULL },
 		{ "mirror-to", 0, 0, G_OPTION_ARG_STRING_ARRAY, &opt_mirror_to,
 		  "Push mirror to this URL after creation (repeatable)", "URL" },
 		{ "sync-on-commit", 0, 0, G_OPTION_ARG_NONE, &sync_on_commit,
@@ -881,9 +884,6 @@ cmd_repo_create(
 	if (description != NULL)
 		g_hash_table_insert(params, g_strdup("description"),
 		                    g_strdup(description));
-
-	if (clone_after)
-		g_hash_table_insert(params, g_strdup("clone"), g_strdup("true"));
 
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
 	                            GCTL_VERB_CREATE, repo_name, params);
@@ -972,6 +972,133 @@ cmd_repo_create(
 		{
 			setup_mirror_to(app, opt_mirror_to[m], source_context,
 			               sync_on_commit);
+		}
+	}
+
+	/*
+	 * Post-create: clone the repo into the current directory.
+	 * --clone (defaults to https) or --clone=ssh for SSH URL.
+	 */
+	if (ret == 0 && (clone_after || clone_ssh))
+	{
+		GctlConfig *cfg;
+		GctlContextResolver *res;
+		GctlForgeType ft;
+		const gchar *host;
+		g_autofree gchar *clone_owner = NULL;
+		g_autofree gchar *clone_url = NULL;
+		g_autoptr(GSubprocess) clone_proc = NULL;
+		g_autoptr(GError) clone_err = NULL;
+		gboolean use_ssh;
+
+		cfg = gctl_app_get_config(app);
+		res = gctl_app_get_resolver(app);
+		ft = gctl_context_resolver_get_forced_forge(res);
+		if (ft == GCTL_FORGE_TYPE_UNKNOWN)
+			ft = gctl_config_get_default_forge(cfg);
+		host = gctl_config_get_default_host(cfg, ft);
+
+		/* Determine owner — same logic as mirror setup */
+		{
+			g_autoptr(GctlForgeContext) tmp_ctx = NULL;
+			g_autoptr(GError) tmp_err = NULL;
+			const gchar *def_remote;
+
+			def_remote = gctl_config_get_default_remote(cfg);
+			tmp_ctx = gctl_context_resolver_resolve(
+			    res, def_remote, &tmp_err);
+			if (tmp_ctx != NULL) {
+				const gchar *ro;
+				ro = gctl_forge_context_get_owner(tmp_ctx);
+				if (ro != NULL && *ro != '\0')
+					clone_owner = g_strdup(ro);
+			}
+		}
+		if (clone_owner == NULL && opt_mirror_to != NULL &&
+		    opt_mirror_to[0] != NULL)
+		{
+			g_autofree gchar *mh = NULL;
+			g_autofree gchar *mo = NULL;
+			g_autofree gchar *mr = NULL;
+
+			if (repo_parse_mirror_url(opt_mirror_to[0],
+			                          &mh, &mo, &mr))
+			{
+				if (mo != NULL && *mo != '\0')
+					clone_owner = g_strdup(mo);
+			}
+		}
+		if (clone_owner == NULL) {
+			const gchar *eu;
+			eu = g_getenv("GITCTL_USER");
+			if (eu != NULL)
+				clone_owner = g_strdup(eu);
+		}
+
+		use_ssh = clone_ssh;
+
+		if (host != NULL)
+		{
+			if (use_ssh)
+			{
+				if (clone_owner != NULL)
+					clone_url = g_strdup_printf(
+						"git@%s:%s/%s.git",
+						host, clone_owner, repo_name);
+				else
+					clone_url = g_strdup_printf(
+						"git@%s:%s.git",
+						host, repo_name);
+			}
+			else
+			{
+				if (clone_owner != NULL)
+					clone_url = g_strdup_printf(
+						"https://%s/%s/%s.git",
+						host, clone_owner, repo_name);
+				else
+					clone_url = g_strdup_printf(
+						"https://%s/%s.git",
+						host, repo_name);
+			}
+		}
+
+		if (clone_url != NULL)
+		{
+			if (gctl_executor_get_dry_run(
+			        gctl_app_get_executor(app)))
+			{
+				g_print("[dry-run] 'git' 'clone' '%s'\n",
+				        clone_url);
+			}
+			else
+			{
+				g_printerr("Cloning %s...\n", clone_url);
+				clone_proc = g_subprocess_new(
+				    G_SUBPROCESS_FLAGS_NONE,
+				    &clone_err,
+				    "git", "clone", clone_url, NULL);
+
+				if (clone_proc != NULL)
+				{
+					g_subprocess_wait(clone_proc, NULL,
+					                  &clone_err);
+					if (!g_subprocess_get_successful(clone_proc))
+						g_printerr("warning: clone failed\n");
+				}
+				else
+				{
+					g_printerr("warning: could not spawn "
+					           "git clone: %s\n",
+					           clone_err ? clone_err->message
+					                     : "unknown error");
+				}
+			}
+		}
+		else
+		{
+			g_printerr("warning: could not determine clone URL "
+			           "(set GITCTL_USER or use -R)\n");
 		}
 	}
 
