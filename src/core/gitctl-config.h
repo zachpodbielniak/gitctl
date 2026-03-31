@@ -110,6 +110,18 @@ GctlForgeType
 gctl_config_get_default_forge(GctlConfig *self);
 
 /**
+ * gctl_config_get_default_branch:
+ * @self: a #GctlConfig
+ *
+ * Returns the default branch name for new repositories (e.g. "master").
+ * If not configured, returns %NULL (the forge's own default is used).
+ *
+ * Returns: (transfer none) (nullable): the branch name, or %NULL
+ */
+const gchar *
+gctl_config_get_default_branch(GctlConfig *self);
+
+/**
  * gctl_config_get_forge_for_host:
  * @self: a #GctlConfig
  * @hostname: the hostname to look up

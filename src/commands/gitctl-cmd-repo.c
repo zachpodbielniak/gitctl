@@ -820,6 +820,7 @@ cmd_repo_create(
 	g_autoptr(GError) error = NULL;
 	gboolean is_private = FALSE;
 	gchar *description = NULL;
+	gchar *default_branch = NULL;
 	gboolean clone_after = FALSE;
 	gboolean clone_ssh = FALSE;
 	gboolean sync_on_commit = FALSE;
@@ -838,6 +839,9 @@ cmd_repo_create(
 		  "Create as private repository", NULL },
 		{ "description", 'd', 0, G_OPTION_ARG_STRING, &description,
 		  "Repository description", "DESC" },
+		{ "default-branch", 'b', 0, G_OPTION_ARG_STRING, &default_branch,
+		  "Default branch name (default: from config or forge default)",
+		  "BRANCH" },
 		{ "clone", 'c', 0, G_OPTION_ARG_NONE, &clone_after,
 		  "Clone the repo after creating (HTTPS)", NULL },
 		{ "clone-ssh", 0, 0, G_OPTION_ARG_NONE, &clone_ssh,
@@ -885,8 +889,55 @@ cmd_repo_create(
 		g_hash_table_insert(params, g_strdup("description"),
 		                    g_strdup(description));
 
+	/*
+	 * Default branch: --default-branch overrides config, which
+	 * overrides the forge's default (usually "main").
+	 */
+	{
+		const gchar *branch;
+
+		branch = default_branch;
+		if (branch == NULL) {
+			GctlConfig *cfg;
+
+			cfg = gctl_app_get_config(app);
+			if (cfg != NULL)
+				branch = gctl_config_get_default_branch(cfg);
+		}
+
+		if (branch != NULL)
+			g_hash_table_insert(params, g_strdup("default_branch"),
+			                    g_strdup(branch));
+	}
+
 	ret = gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
 	                            GCTL_VERB_CREATE, repo_name, params);
+
+	/*
+	 * Post-create: set default branch if specified.
+	 *
+	 * None of the forge CLIs (gh, glab, fj, tea) support
+	 * --default-branch at creation time, so we issue a separate
+	 * repo-edit call to set it after the repo exists.
+	 */
+	if (ret == 0) {
+		const gchar *branch;
+
+		branch = g_hash_table_lookup(params, "default_branch");
+		if (branch != NULL) {
+			g_autoptr(GHashTable) edit_params = NULL;
+
+			edit_params = g_hash_table_new_full(
+			    g_str_hash, g_str_equal, g_free, g_free);
+			g_hash_table_insert(edit_params,
+			    g_strdup("default_branch"),
+			    g_strdup(branch));
+
+			gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
+			                      GCTL_VERB_EDIT, repo_name,
+			                      edit_params);
+		}
+	}
 
 	/* Post-create: set up push mirrors if --mirror-to was specified */
 	if (ret == 0 && opt_mirror_to != NULL)
@@ -1114,6 +1165,7 @@ cmd_repo_create(
 	}
 
 	g_free(description);
+	g_free(default_branch);
 	g_strfreev(opt_mirror_to);
 	g_free(opt_token_github);
 	g_free(opt_token_gitlab);

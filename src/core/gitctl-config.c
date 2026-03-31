@@ -20,6 +20,7 @@ struct _GctlConfig
 	gchar            *config_path;
 	GctlOutputFormat  default_output_format;
 	gchar            *default_remote;
+	gchar            *default_branch;
 	GctlForgeType     default_forge;
 	GHashTable       *forge_hosts;   /* gchar* hostname -> GINT_TO_POINTER(GctlForgeType) */
 	GHashTable       *cli_paths;     /* gchar* forge key -> gchar* path */
@@ -89,6 +90,7 @@ populate_defaults(GctlConfig *self)
 	/* Scalar defaults */
 	self->default_output_format = GCTL_OUTPUT_FORMAT_TABLE;
 	self->default_remote        = g_strdup("origin");
+	self->default_branch        = NULL;
 	self->default_forge         = GCTL_FORGE_TYPE_GITHUB;
 
 	/* Forge-host mapping defaults */
@@ -155,6 +157,13 @@ apply_scalar_overrides(
 	if (val != NULL) {
 		g_free(self->default_remote);
 		self->default_remote = g_strdup(val);
+	}
+
+	/* default branch for new repos */
+	val = yaml_mapping_get_string_member(root_map, "default_branch");
+	if (val != NULL) {
+		g_free(self->default_branch);
+		self->default_branch = g_strdup(val);
 	}
 
 	/* default forge */
@@ -357,6 +366,7 @@ gctl_config_finalize(GObject *object)
 
 	g_free(self->config_path);
 	g_free(self->default_remote);
+	g_free(self->default_branch);
 	g_clear_pointer(&self->forge_hosts, g_hash_table_unref);
 	g_clear_pointer(&self->cli_paths, g_hash_table_unref);
 	g_clear_pointer(&self->default_hosts, g_hash_table_unref);
@@ -529,6 +539,14 @@ gctl_config_get_default_forge(GctlConfig *self)
 	g_return_val_if_fail(GCTL_IS_CONFIG(self), GCTL_FORGE_TYPE_UNKNOWN);
 
 	return self->default_forge;
+}
+
+const gchar *
+gctl_config_get_default_branch(GctlConfig *self)
+{
+	g_return_val_if_fail(GCTL_IS_CONFIG(self), NULL);
+
+	return self->default_branch;
 }
 
 GctlForgeType
