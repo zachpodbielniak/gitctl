@@ -143,6 +143,23 @@ gctl_config_get_default_host(
 );
 
 /**
+ * gctl_config_get_ssh_host:
+ * @self: a #GctlConfig
+ * @forge_type: the #GctlForgeType to look up
+ *
+ * Returns the SSH hostname for @forge_type, if different from the
+ * default (HTTPS) host.  Falls back to the default host if no
+ * explicit ssh_host is configured.
+ *
+ * Returns: (transfer none) (nullable): the SSH hostname
+ */
+const gchar *
+gctl_config_get_ssh_host(
+	GctlConfig   *self,
+	GctlForgeType forge_type
+);
+
+/**
  * gctl_config_get_cli_path:
  * @self: a #GctlConfig
  * @forge_type: the #GctlForgeType to look up

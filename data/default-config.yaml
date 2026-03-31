@@ -10,14 +10,17 @@ forges:
     hosts:
       - github.com
     cli: gh
+    # ssh_host: github.com  # same as default, no override needed
   gitlab:
     hosts:
       - gitlab.com
     cli: glab
+    # ssh_host: gitlab.com  # same as default
   forgejo:
     hosts:
       - codeberg.org
     cli: fj
+    # ssh_host: codeberg.org  # override if SSH host differs from HTTPS
   gitea:
     hosts: []
     cli: tea

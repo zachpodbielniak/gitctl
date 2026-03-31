@@ -1041,14 +1041,25 @@ cmd_repo_create(
 		{
 			if (use_ssh)
 			{
+				/*
+				 * Use ssh_host from config if set (e.g.
+				 * git-ssh.podbielniak.com vs git.podbielniak.com).
+				 * Falls back to the default host.
+				 */
+				const gchar *ssh_host;
+
+				ssh_host = gctl_config_get_ssh_host(cfg, ft);
+				if (ssh_host == NULL)
+					ssh_host = host;
+
 				if (clone_owner != NULL)
 					clone_url = g_strdup_printf(
 						"git@%s:%s/%s.git",
-						host, clone_owner, repo_name);
+						ssh_host, clone_owner, repo_name);
 				else
 					clone_url = g_strdup_printf(
 						"git@%s:%s.git",
-						host, repo_name);
+						ssh_host, repo_name);
 			}
 			else
 			{

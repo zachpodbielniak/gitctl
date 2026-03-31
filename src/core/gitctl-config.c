@@ -24,6 +24,7 @@ struct _GctlConfig
 	GHashTable       *forge_hosts;   /* gchar* hostname -> GINT_TO_POINTER(GctlForgeType) */
 	GHashTable       *cli_paths;     /* gchar* forge key -> gchar* path */
 	GHashTable       *default_hosts; /* gchar* forge key -> gchar* default hostname */
+	GHashTable       *ssh_hosts;    /* gchar* forge key -> gchar* SSH hostname */
 	GHashTable       *aliases;       /* gchar* alias -> gchar* expanded */
 };
 
@@ -251,6 +252,18 @@ apply_forges_override(
 			}
 		}
 
+		/* ssh_host override (for forges where SSH host differs) */
+		{
+			const gchar *sh;
+
+			sh = yaml_mapping_get_string_member(forge_map, "ssh_host");
+			if (sh != NULL) {
+				g_hash_table_insert(self->ssh_hosts,
+				                    g_strdup(forge_type_key(ft)),
+				                    g_strdup(sh));
+			}
+		}
+
 		/* hosts override */
 		if (!yaml_mapping_has_member(forge_map, "hosts"))
 			continue;
@@ -347,6 +360,7 @@ gctl_config_finalize(GObject *object)
 	g_clear_pointer(&self->forge_hosts, g_hash_table_unref);
 	g_clear_pointer(&self->cli_paths, g_hash_table_unref);
 	g_clear_pointer(&self->default_hosts, g_hash_table_unref);
+	g_clear_pointer(&self->ssh_hosts, g_hash_table_unref);
 	g_clear_pointer(&self->aliases, g_hash_table_unref);
 
 	G_OBJECT_CLASS(gctl_config_parent_class)->finalize(object);
@@ -371,6 +385,8 @@ gctl_config_init(GctlConfig *self)
 	self->cli_paths     = g_hash_table_new_full(g_str_hash, g_str_equal,
 	                                            g_free, g_free);
 	self->default_hosts = g_hash_table_new_full(g_str_hash, g_str_equal,
+	                                            g_free, g_free);
+	self->ssh_hosts     = g_hash_table_new_full(g_str_hash, g_str_equal,
 	                                            g_free, g_free);
 	self->aliases       = g_hash_table_new_full(g_str_hash, g_str_equal,
 	                                            g_free, g_free);
@@ -576,6 +592,25 @@ gctl_config_get_default_host(
 	 */
 	return (const gchar *)g_hash_table_lookup(
 		self->default_hosts, forge_type_key(forge_type));
+}
+
+const gchar *
+gctl_config_get_ssh_host(
+	GctlConfig   *self,
+	GctlForgeType forge_type
+){
+	const gchar *ssh_host;
+
+	g_return_val_if_fail(GCTL_IS_CONFIG(self), NULL);
+
+	/* Check for explicit ssh_host first */
+	ssh_host = (const gchar *)g_hash_table_lookup(
+		self->ssh_hosts, forge_type_key(forge_type));
+	if (ssh_host != NULL)
+		return ssh_host;
+
+	/* Fall back to default host (same host for HTTPS and SSH) */
+	return gctl_config_get_default_host(self, forge_type);
 }
 
 const gchar *
