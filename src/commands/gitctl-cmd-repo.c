@@ -923,9 +923,42 @@ cmd_repo_create(
 	if (ret == 0) {
 		const gchar *branch;
 
-		branch = g_hash_table_lookup(params, "default_branch");
+		branch = (const gchar *)g_hash_table_lookup(
+		    params, "default_branch");
 		if (branch != NULL) {
 			g_autoptr(GHashTable) edit_params = NULL;
+			GctlContextResolver *res;
+			g_autofree gchar *owner_for_edit = NULL;
+
+			/*
+			 * Force the resolver to target the NEWLY CREATED
+			 * repo, not whatever the current directory's git
+			 * remote points to.
+			 */
+			res = gctl_app_get_resolver(app);
+
+			/* Detect owner same way as the mirror setup */
+			if (opt_mirror_to != NULL &&
+			    opt_mirror_to[0] != NULL)
+			{
+				g_autofree gchar *mh = NULL;
+				g_autofree gchar *mo = NULL;
+				g_autofree gchar *mr = NULL;
+
+				if (repo_parse_mirror_url(opt_mirror_to[0],
+				        &mh, &mo, &mr) &&
+				    mo != NULL)
+					owner_for_edit = g_strdup(mo);
+			}
+			if (owner_for_edit == NULL) {
+				const gchar *eu = g_getenv("GITCTL_USER");
+				if (eu != NULL)
+					owner_for_edit = g_strdup(eu);
+			}
+
+			if (owner_for_edit != NULL)
+				gctl_context_resolver_set_forced_repo(
+				    res, owner_for_edit, repo_name);
 
 			edit_params = g_hash_table_new_full(
 			    g_str_hash, g_str_equal, g_free, g_free);
@@ -934,8 +967,12 @@ cmd_repo_create(
 			    g_strdup(branch));
 
 			gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
-			                      GCTL_VERB_EDIT, repo_name,
+			                      GCTL_VERB_EDIT, NULL,
 			                      edit_params);
+
+			/* Clear forced repo for subsequent operations */
+			gctl_context_resolver_set_forced_repo(
+			    res, NULL, NULL);
 		}
 	}
 
