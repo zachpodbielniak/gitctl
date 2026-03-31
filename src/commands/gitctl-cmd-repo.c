@@ -920,59 +920,82 @@ cmd_repo_create(
 	 * --default-branch at creation time, so we issue a separate
 	 * repo-edit call to set it after the repo exists.
 	 */
+	/*
+	 * Post-create: set default branch.  We use the forge module's
+	 * build_api_argv directly with the repo name we just created,
+	 * bypassing the context resolver (which would target whatever
+	 * the current directory's git remote points to).
+	 */
 	if (ret == 0) {
 		const gchar *branch;
 
 		branch = (const gchar *)g_hash_table_lookup(
 		    params, "default_branch");
 		if (branch != NULL) {
-			g_autoptr(GHashTable) edit_params = NULL;
+			GctlConfig *bcfg;
 			GctlContextResolver *res;
-			g_autofree gchar *owner_for_edit = NULL;
+			GctlModuleManager *bmm;
+			GctlForgeType ft;
+			GctlForge *forge;
+			const gchar *bhost;
+			g_autofree gchar *bowner = NULL;
+			g_autofree gchar *body = NULL;
+			g_autofree gchar *endpoint = NULL;
+			g_autoptr(GctlForgeContext) bctx = NULL;
+			g_autoptr(GError) br_err = NULL;
+			g_autoptr(GctlCommandResult) br_result = NULL;
+			gchar **br_argv;
 
-			/*
-			 * Force the resolver to target the NEWLY CREATED
-			 * repo, not whatever the current directory's git
-			 * remote points to.
-			 */
+			bcfg = gctl_app_get_config(app);
 			res = gctl_app_get_resolver(app);
+			bmm = gctl_app_get_module_manager(app);
+			ft = gctl_context_resolver_get_forced_forge(res);
+			if (ft == GCTL_FORGE_TYPE_UNKNOWN)
+				ft = gctl_config_get_default_forge(bcfg);
+			bhost = gctl_config_get_default_host(bcfg, ft);
+			forge = gctl_module_manager_find_forge(bmm, ft);
 
-			/* Detect owner same way as the mirror setup */
-			if (opt_mirror_to != NULL &&
-			    opt_mirror_to[0] != NULL)
+			/* Detect owner */
+			if (opt_mirror_to != NULL && opt_mirror_to[0] != NULL)
 			{
 				g_autofree gchar *mh = NULL;
 				g_autofree gchar *mo = NULL;
 				g_autofree gchar *mr = NULL;
 
 				if (repo_parse_mirror_url(opt_mirror_to[0],
-				        &mh, &mo, &mr) &&
-				    mo != NULL)
-					owner_for_edit = g_strdup(mo);
+				    &mh, &mo, &mr) && mo != NULL)
+					bowner = g_strdup(mo);
 			}
-			if (owner_for_edit == NULL) {
+			if (bowner == NULL) {
 				const gchar *eu = g_getenv("GITCTL_USER");
 				if (eu != NULL)
-					owner_for_edit = g_strdup(eu);
+					bowner = g_strdup(eu);
 			}
 
-			if (owner_for_edit != NULL)
-				gctl_context_resolver_set_forced_repo(
-				    res, owner_for_edit, repo_name);
+			if (forge != NULL && bowner != NULL)
+			{
+				bctx = gctl_forge_context_new(
+				    ft, NULL, bowner, repo_name, bhost,
+				    gctl_config_get_cli_path(bcfg, ft));
 
-			edit_params = g_hash_table_new_full(
-			    g_str_hash, g_str_equal, g_free, g_free);
-			g_hash_table_insert(edit_params,
-			    g_strdup("default_branch"),
-			    g_strdup(branch));
+				body = g_strdup_printf(
+				    "{\"default_branch\":\"%s\"}", branch);
+				endpoint = g_strdup_printf(
+				    "/repos/%s/%s", bowner, repo_name);
 
-			gctl_cmd_execute_verb(app, GCTL_RESOURCE_KIND_REPO,
-			                      GCTL_VERB_EDIT, NULL,
-			                      edit_params);
+				br_argv = gctl_forge_build_api_argv(
+				    forge, "PATCH", endpoint, body,
+				    bctx, &br_err);
 
-			/* Clear forced repo for subsequent operations */
-			gctl_context_resolver_set_forced_repo(
-			    res, NULL, NULL);
+				if (br_argv != NULL)
+				{
+					br_result = gctl_executor_run(
+					    gctl_app_get_executor(app),
+					    (const gchar * const *)br_argv,
+					    &br_err);
+					g_strfreev(br_argv);
+				}
+			}
 		}
 	}
 
@@ -1184,6 +1207,43 @@ cmd_repo_create(
 					                  &clone_err);
 					if (!g_subprocess_get_successful(clone_proc))
 						g_printerr("warning: clone failed\n");
+
+					/*
+					 * For empty repos, git uses the local
+					 * init.defaultBranch (usually "main").
+					 * Set HEAD to point to our branch so
+					 * the first commit lands on the right
+					 * branch name.
+					 */
+					{
+						const gchar *cb;
+
+						cb = default_branch;
+						if (cb == NULL) {
+							GctlConfig *bcfg;
+							bcfg = gctl_app_get_config(app);
+							if (bcfg != NULL)
+								cb = gctl_config_get_default_branch(bcfg);
+						}
+
+						if (cb != NULL)
+						{
+							g_autoptr(GSubprocess) br_proc = NULL;
+							g_autoptr(GError) br_err = NULL;
+							g_autofree gchar *ref = NULL;
+
+							ref = g_strdup_printf("refs/heads/%s", cb);
+							br_proc = g_subprocess_new(
+							    G_SUBPROCESS_FLAGS_STDERR_SILENCE |
+							    G_SUBPROCESS_FLAGS_STDOUT_SILENCE,
+							    &br_err,
+							    "git", "-C", repo_name,
+							    "symbolic-ref", "HEAD", ref,
+							    NULL);
+							if (br_proc != NULL)
+								g_subprocess_wait(br_proc, NULL, NULL);
+						}
+					}
 				}
 				else
 				{
