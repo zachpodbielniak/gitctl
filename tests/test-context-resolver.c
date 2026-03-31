@@ -139,11 +139,18 @@ test_resolver_resolve_no_remote_no_forge(void)
 	config = gctl_config_new();
 	resolver = gctl_context_resolver_new(config);
 
-	/* No forced forge -- should fail when remote does not exist */
+	/*
+	 * No forced forge, but the config has a default_forge (GITHUB
+	 * from populate_defaults).  The resolver should fall back to
+	 * it and return a context with the default host.
+	 */
 	ctx = gctl_context_resolver_resolve(resolver, "bogus-remote", &error);
 
-	g_assert_null(ctx);
-	g_assert_nonnull(error);
+	g_assert_nonnull(ctx);
+	g_assert_no_error(error);
+	g_assert_cmpint(gctl_forge_context_get_forge_type(ctx), ==,
+	                GCTL_FORGE_TYPE_GITHUB);
+	g_assert_cmpstr(gctl_forge_context_get_host(ctx), ==, "github.com");
 }
 
 /* ── Helper: set up a temp git repo with a specific remote URL ──── */
@@ -529,13 +536,19 @@ test_resolver_invalid_remote(void)
 	config = gctl_config_new();
 	resolver = gctl_context_resolver_new(config);
 
-	/* Ask for a remote that does not exist in the temp repo */
+	/*
+	 * Ask for a remote that does not exist.  The resolver falls
+	 * back to the config's default_forge (GITHUB) and returns a
+	 * valid context rather than failing.
+	 */
 	ctx = gctl_context_resolver_resolve(resolver, "upstream", &error);
 
 	g_unsetenv("GIT_DIR");
 
-	g_assert_null(ctx);
-	g_assert_nonnull(error);
+	g_assert_nonnull(ctx);
+	g_assert_no_error(error);
+	g_assert_cmpint(gctl_forge_context_get_forge_type(ctx), ==,
+	                GCTL_FORGE_TYPE_GITHUB);
 
 	cleanup_temp_repo(tmpdir);
 }

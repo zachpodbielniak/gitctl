@@ -478,15 +478,42 @@ gctl_context_resolver_resolve(
 			}
 		}
 	} else {
-		if (url == NULL)
-			return NULL;
+		if (url == NULL) {
+			/*
+			 * No git remote and no --forge flag.  Fall back to
+			 * the config's default_forge so operations like
+			 * repo create work outside a git repo.
+			 */
+			forge_type = gctl_config_get_default_forge(self->config);
 
-		forge_type = gctl_config_get_forge_for_host(self->config, host);
-		if (forge_type == GCTL_FORGE_TYPE_UNKNOWN) {
-			g_set_error(error, GCTL_ERROR, GCTL_ERROR_FORGE_DETECT,
-			            "Could not detect forge type for host '%s'. "
-			            "Use --forge to specify explicitly.", host);
-			return NULL;
+			if (forge_type == GCTL_FORGE_TYPE_UNKNOWN) {
+				/* No default forge either — can't proceed */
+				return NULL;
+			}
+
+			g_clear_error(error);
+
+			{
+				const gchar *default_host;
+
+				default_host = gctl_config_get_default_host(
+					self->config, forge_type);
+				if (default_host != NULL) {
+					g_free(host);
+					host = g_strdup(default_host);
+				}
+			}
+		} else {
+			forge_type = gctl_config_get_forge_for_host(
+				self->config, host);
+			if (forge_type == GCTL_FORGE_TYPE_UNKNOWN) {
+				g_set_error(error, GCTL_ERROR,
+				            GCTL_ERROR_FORGE_DETECT,
+				            "Could not detect forge type for "
+				            "host '%s'. Use --forge to specify "
+				            "explicitly.", host);
+				return NULL;
+			}
 		}
 	}
 
